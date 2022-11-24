@@ -21,7 +21,38 @@ from bpy.types import (Panel, Operator)
 
 
 
+col_blue = (76/255.0, 201/255.0,240/255.0)
+col_yellow = (254/255.0, 228/255.0, 64/255.0)
 
+
+
+
+# ------------------------------------------------------------------------
+#    global variables
+# ------------------------------------------------------------------------
+
+PROPS = [
+    ('base_x', bpy.props.IntProperty(name='x', default=3, min=1, max=20)),
+    ('base_y', bpy.props.IntProperty(name='y', default=3, min=1, max=20))]
+    
+
+class StitchingLinesProp():
+    currentDrawing = []
+    # so we dont show multiple current drawings when repeated click "Done"
+    if_curr_drawing_is_shown = False 
+    
+    if_user_is_drawing = True
+    
+    savedStitchingLines = []
+    
+    colSaved = col_blue
+    
+    colTmp = col_yellow
+    
+# ------------------------------------------------------------------------
+#    global variables
+# ------------------------------------------------------------------------
+    
 
 
 def delete_all():
@@ -91,8 +122,8 @@ def create_line_stroke_from_gpencil(name="GPencil", line_width=12):
     return gpencil, gp_stroke
     
 
-def test_draw(pts): 
-    gpencil, gp_stroke = create_line_stroke_from_gpencil("test")
+def draw_stitching_line(pts, col): 
+    gpencil, gp_stroke = create_line_stroke_from_gpencil("all_stitching_line")
     gp_stroke.points.add(len(pts))
 
     for item, value in enumerate(pts):
@@ -104,7 +135,7 @@ def test_draw(pts):
     gpencil.data.materials.append(mat)
     mat.grease_pencil.show_fill = False
 #    mat.grease_pencil.fill_color = (1.0, 0.0, 1.0, 1.0)
-    mat.grease_pencil.color = (76/255.0, 201/255.0,240/255.0, 1.0)
+    mat.grease_pencil.color = (col[0], col[1], col[2], 1.0)
 
     gp_stroke.points[0].pressure = 2
 #    gp_stroke.points[0].vertex_color = (1.0, 0.0, 0.0, 1.0)
@@ -112,24 +143,24 @@ def test_draw(pts):
 #    gp_stroke.points[-1].vertex_color = (0.0, 1.0, 0.0, 1.0)
 
 
-
+def draw_saved_stitching_lines(context):
+    props = bpy.context.scene.sl_props
+    print(props.savedStitchingLines)
+    for i in range(len(props.savedStitchingLines)):
+        vids = props.savedStitchingLines[i]
+        obj = bpy.data.objects['Grid']
+        pts = get_vtx_pos(obj, vids)
+        draw_stitching_line(pts, props.colSaved)
+        
+        
+def delete_all_gpencil_objects():
+    for obj in bpy.data.objects:
+        if obj.type == 'GPENCIL':
+            bpy.data.objects.remove(obj)
+            
+            
 # ------------------------------------------------------------------------
-#    global variables
-# ------------------------------------------------------------------------
-
-
-PROPS = [
-    ('base_x', bpy.props.IntProperty(name='x', default=3, min=1, max=20)),
-    ('base_y', bpy.props.IntProperty(name='y', default=3, min=1, max=20))]
-    
-
-class StitchingLinesProp():
-    currentDrawing = []
-    if_user_is_drawing = True
-    savedStitchingLines = []    
-
-# ------------------------------------------------------------------------
-#    mouse event detection
+#    Drawing the Unit Pattern using mouse
 # ------------------------------------------------------------------------
 
 from bpy.props import IntProperty, FloatProperty
@@ -156,23 +187,24 @@ class SelectStitchingPointOperator(bpy.types.Operator):
                     if v.select:
                         if v.index not in props.currentDrawing:
                             props.currentDrawing.append(v.index)
-                            print(props.currentDrawing)
-        
-    #        elif event.type in {'RIGHTMOUSE', 'MIDMOUSE'}:
-    #            print('I am here')
-    #            props.if_user_is_drawing = False
-    #            props.currentDrawing = []
-    #            return {'CANCELLED'}
+#                            print(props.currentDrawing)
         else:
             return{'CANCELLED'}
         
         return {'PASS_THROUGH'}
         
 
+    
     def invoke(self, context, event):
         
+        delete_all_gpencil_objects()
+        
+        draw_saved_stitching_lines(context)
+        
         props = bpy.context.scene.sl_props
+        
         props.if_user_is_drawing = True
+        props.if_curr_drawing_is_shown = False
 
         if props.if_user_is_drawing:
             props.currentDrawing = []
@@ -191,9 +223,74 @@ class SelectStitchingPointOperator(bpy.types.Operator):
             return {'CANCELLED'}
         
         
+        
+        
+class finishDrawing(Operator):
+    bl_idname = "edit.finish_drawing"
+    bl_label = "Finish Drawing the stitching line"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        
+        bpy.ops.object.mode_set(mode = 'OBJECT')
+        
+        props = bpy.context.scene.sl_props
+        
+        if not props.if_curr_drawing_is_shown:
+            mesh = bpy.data.objects['Grid']
+            pts = get_vtx_pos(mesh, props.currentDrawing)
+            draw_stitching_line(pts, props.colTmp)
+            props.if_curr_drawing_is_shown = True
+
+        props.if_user_is_drawing = False
+
+        return {'FINISHED'}
+
+
+class saveCurrentStitchingLine(Operator):
+    bl_idname = "edit.save_current_stitching_line"
+    bl_label = "Add one stiching line"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        props = bpy.context.scene.sl_props
+        if props.currentDrawing:
+            props.savedStitchingLines.append(props.currentDrawing)
+        props.currentDrawing = []
+        
+        print(props.savedStitchingLines)
+        
+        delete_all_gpencil_objects()
+        
+        draw_saved_stitching_lines(context)
+        
+        props.if_curr_drawing_is_shown = True
+        
+        return {'FINISHED'}
+
+
+
+class deleteCurrentStitchingLine(Operator):
+    bl_idname = "edit.delete_current_stitching_line"
+    bl_label = "delete the current one stiching line"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        props = bpy.context.scene.sl_props
+        props.currentDrawing = []
+        
+        delete_all_gpencil_objects()
+        
+        draw_saved_stitching_lines(context)
+        
+        props.if_curr_drawing_is_shown = True
+        
+        return {'FINISHED'}
+
+        
 
 # ------------------------------------------------------------------------
-#    functions
+#    Create Unit Grid
 # ------------------------------------------------------------------------
 
 class CreateGrid(Operator):
@@ -229,97 +326,9 @@ class CreateGrid(Operator):
 
 
 
-
-
-# TODO: some bug here - cannot click start twice :/
-class startAddStitchingLines(Operator):
-    """initialization for adding stitching lines"""
-    bl_idname = "edit.initialize_add_stitching_lines"
-    bl_label = "Initialization for Adding Stitching Lines"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def execute(self, context):
-        
-        props = bpy.context.scene.sl_props
-        
-        currentDrawing = [] # clear the previously selected stitching lines
-        
-        mesh = bpy.data.objects['Grid']
-        select_one_object(mesh)
-
-        bpy.ops.object.mode_set(mode = 'EDIT') 
-        
-        return {'FINISHED'}
-
-#class draw
-
-class finishDrawing(Operator):
-    bl_idname = "edit.finish_drawing"
-    bl_label = "Finish Drawing the stitching line"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def execute(self, context):
-        
-        bpy.ops.object.mode_set(mode = 'OBJECT')
-        
-        props = bpy.context.scene.sl_props
-        
-        mesh = bpy.data.objects['Grid']
-        pts = get_vtx_pos(mesh, props.currentDrawing)
-        test_draw(pts)
-        
-        print(pts)
-#        for i in range(len(pts)-1):
-#            test_draw(pts[i:i+2])
-    
-        props.if_user_is_drawing = False
-
-        print('stop now')
-        print(props.if_user_is_drawing)
-        return {'FINISHED'}
-
-
-class addOneStitchingLine(Operator):
-    bl_idname = "edit.add_one_stitching_line"
-    bl_label = "Add one stiching line"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    def execute(self, context):
-        obj = bpy.data.objects['Grid']
-        bm = bmesh.from_edit_mesh(obj.data)
-        
-#        if mouse_Lclick.positive :
-#            for v in bm.verts:
-#                if v.select:
-#                    print(v.index)
-#        
-        
-        vid_selected = []
-        
-        for v in bm.verts:
-            if v.select:
-                vid_selected.append(v.index)
-        
-        # TODO: dunno how to raise error :(
-        if len(vid_selected) < 2:
-            print('Error: Invalid Selection - A valid stitching line contains at least two nodes')
-        else:
-            # add the valid stitching line to the list
-            UserStitchingLines.append(vid_selected) 
-            
-            # deselect all the points
-            for vid in vid_selected:
-                bm.verts[vid].select = False
-            
-            
-            bpy.ops.object.mode_set(mode = 'OBJECT')
-            pts = get_vtx_pos(obj, vid_selected)
-            print(vid_selected)
-            test_draw(pts)
-            
-            
-        return {'FINISHED'}
-
+# ------------------------------------------------------------------------
+#    Full Smocking Pattern by Tiling
+# ------------------------------------------------------------------------
 
 
 
@@ -351,15 +360,17 @@ class GridPanel(bpy.types.Panel):
 
 
         
-        layout.label(text= "Add Stitching Lines:")
+        layout.label(text= "Draw A Stitching Line")
         row = layout.row()
         
-        row.operator(SelectStitchingPointOperator.bl_idname, text="Draw a stitching line", icon='LATTICE_DATA')
+        row.operator(SelectStitchingPointOperator.bl_idname, text="Draw", icon='LATTICE_DATA')
         row.operator(finishDrawing.bl_idname, text="Done", icon='CHECKMARK')
+       
+        layout.label(text= "Save Current Drawing...or not")
         row = layout.row()
-        row.operator(startAddStitchingLines.bl_idname, text="Start", icon='LATTICE_DATA')
-        row = layout.row()
-        row.operator(addOneStitchingLine.bl_idname, text="Add", icon='ADD')
+        row.operator(saveCurrentStitchingLine.bl_idname, text="Add", icon='FUND')
+        row.operator(deleteCurrentStitchingLine.bl_idname, text="Delete", icon='HEART')
+        
                
         
         layout.label(text= "Load Existing Patterns:")
@@ -373,8 +384,8 @@ class GridPanel(bpy.types.Panel):
 
 _classes = [
     CreateGrid,
-    startAddStitchingLines,
-    addOneStitchingLine,
+    saveCurrentStitchingLine,
+    deleteCurrentStitchingLine,
     SelectStitchingPointOperator,
     finishDrawing,
     GridPanel
@@ -398,3 +409,29 @@ def unregister():
 
 if __name__ == "__main__":
     register()
+
+
+
+
+
+# useless
+
+# TODO: some bug here - cannot click start twice :/
+#class startAddStitchingLines(Operator):
+#    """initialization for adding stitching lines"""
+#    bl_idname = "edit.initialize_add_stitching_lines"
+#    bl_label = "Initialization for Adding Stitching Lines"
+#    bl_options = {'REGISTER', 'UNDO'}
+#    
+#    def execute(self, context):
+#        
+#        props = bpy.context.scene.sl_props
+#        
+#        currentDrawing = [] # clear the previously selected stitching lines
+#        
+#        mesh = bpy.data.objects['Grid']
+#        select_one_object(mesh)
+
+#        bpy.ops.object.mode_set(mode = 'EDIT') 
+#        
+#        return {'FINISHED'}
