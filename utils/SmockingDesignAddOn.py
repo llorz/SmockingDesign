@@ -311,6 +311,7 @@ class SelectStitchingPointOperator(Operator):
         
         props.if_user_is_drawing = True
         props.if_curr_drawing_is_shown = False
+        
 
         if props.if_user_is_drawing:
             props.currentDrawing = []
@@ -426,7 +427,7 @@ class CreateGrid(Operator):
         mesh.show_axis = False
         mesh.show_wire = True
         mesh.display_type = 'WIRE'
-#        mesh.select_set(True) # select the grid
+        select_one_object(mesh)
         
         add_text_to_scene(body="Unit Smocking Pattern", 
                           location=(0, base_y+0.5, 0), 
