@@ -30,6 +30,7 @@ import os
 
 col_blue = (76/255.0, 201/255.0,240/255.0)
 col_yellow = (254/255.0, 228/255.0, 64/255.0)
+strokeSize = 10 # to plot the stiching lines
 
 
 # global variables from user input
@@ -75,6 +76,8 @@ class debug_print(Operator):
     bl_label = "print data in scene"
     
     def execute(self, context):
+        initialize()
+        
         props = bpy.types.Scene.sl_props
         dt = bpy.types.Scene.solver_data
         
@@ -126,6 +129,28 @@ class debug_func(Operator):
         construct_object_from_mesh_to_scene(V, F, 'Grid')
         
         return {'FINISHED'}
+
+
+def initialize():
+    delete_collection()
+    clean_objects()
+    
+    # collections for unit smocking pattern
+    my_coll = bpy.data.collections.new('UnitSmockingPattern')
+    bpy.context.scene.collection.children.link(my_coll)
+    
+    my_coll_strokes = bpy.data.collections.new('UnitStitchingLines')
+    my_coll.children.link(my_coll_strokes)
+    
+    # collections for the full smocking pattern
+    
+    my_coll = bpy.data.collections.new('SmockingPattern')
+    bpy.context.scene.collection.children.link(my_coll)
+    
+    my_coll_strokes = bpy.data.collections.new('StitchingLines')
+    my_coll.children.link(my_coll_strokes)
+    
+    
     
 
 # ========================================================================
@@ -153,12 +178,13 @@ class UnitSmockingPattern():
         add_text_to_scene(body="Unit Smocking Pattern", 
                           location=(0, self.base_y+0.5, 0), 
                           scale=(1,1,1),
-                          obj_name='grid_annotation')
+                          obj_name='grid_annotation',
+                          coll_name='UnitSmockingPattern')
         
         for lid in range(len(self.stitching_lines)):
             pids = find_index_in_list(self.stitching_points_lineID, lid)
             pos = np.array(self.stitching_points)[pids, :]
-            draw_stitching_line(pos, col_blue, "stitching_line_" + str(lid))
+            draw_stitching_line(pos, col_blue, "stitching_line_" + str(lid), strokeSize, 'UnitStitchingLines')
         
 
 
@@ -178,7 +204,11 @@ class SmockingPattern():
 def delete_collection():    
     for coll in bpy.data.collections:
         bpy.data.collections.remove(coll)
-    
+
+def clean_objects_in_collection(coll_name):
+    coll = bpy.data.collections[coll_name]
+    for item in coll.objects:
+        bpy.data.objects.remove(item)    
 
 def delete_all():
     bpy.ops.object.select_all(action='SELECT')
@@ -220,7 +250,8 @@ def add_text_to_scene(body="test",
     font_obj = bpy.data.objects.new(name=obj_name, object_data=font_curve)
     font_obj.location = location
     font_obj.scale = scale
-    bpy.context.scene.collection.children[coll_name].objects.link(font_obj)
+#    bpy.context.scene.collection.children[coll_name].objects.link(font_obj)
+    bpy.data.collections[coll_name].objects.link(font_obj)
 
 
 
@@ -327,6 +358,7 @@ def read_usp(file_name):
 # ---------------------END: write/read unit-smocking-pattern ------------------------
 
 
+# ---------------------BEGIN: add strokes via gpencil ------------------------
 
 # Drawing with Gpencil:
 # Reference: 
@@ -337,7 +369,8 @@ def create_line_stroke_from_gpencil(name="GPencil", line_width=12, coll_name='Sm
     gpencil_data = bpy.data.grease_pencils.new(name)
     gpencil = bpy.data.objects.new(gpencil_data.name, gpencil_data)
 #    bpy.context.collection.objects.link(gpencil)
-    bpy.context.scene.collection.children[coll_name].objects.link(gpencil)
+#    bpy.context.scene.collection.children[coll_name].objects.link(gpencil)
+    bpy.data.collections[coll_name].objects.link(gpencil)
     gp_layer = gpencil_data.layers.new("lines")
 
     gp_frame = gp_layer.frames.new(bpy.context.scene.frame_current)
@@ -351,8 +384,8 @@ def create_line_stroke_from_gpencil(name="GPencil", line_width=12, coll_name='Sm
     return gpencil, gp_stroke
     
 
-def draw_stitching_line(pts, col, name="stitching_line"): 
-    gpencil, gp_stroke = create_line_stroke_from_gpencil(name)
+def draw_stitching_line(pts, col, name="stitching_line", line_width=12, coll_name='SmockingPattern'): 
+    gpencil, gp_stroke = create_line_stroke_from_gpencil(name, line_width, coll_name)
     gp_stroke.points.add(len(pts))
 
     for item, value in enumerate(pts):
@@ -373,14 +406,14 @@ def draw_stitching_line(pts, col, name="stitching_line"):
 #       gp_stroke.points[-1].vertex_color = (0.0, 1.0, 0.0, 1.0)
 
 
-def draw_saved_stitching_lines(context):
+def draw_saved_stitching_lines(context, coll_name='SmockingPattern'):
     props = bpy.context.scene.sl_props
     print(props.savedStitchingLines)
     for i in range(len(props.savedStitchingLines)):
         vids = props.savedStitchingLines[i]
         obj = bpy.data.objects['Grid']
         pts = get_vtx_pos(obj, vids)
-        draw_stitching_line(pts, props.colSaved, "stitching_line_" + str(i))
+        draw_stitching_line(pts, props.colSaved, "stitching_line_" + str(i), strokeSize, coll_name)
         
         
 def delete_all_gpencil_objects():
@@ -388,6 +421,8 @@ def delete_all_gpencil_objects():
         if obj.type == 'GPENCIL':
             bpy.data.objects.remove(obj)
             
+# ---------------------END: add strokes via gpencil ------------------------
+
             
 def construct_object_from_mesh_to_scene(V, F, mesh_name, coll_name='SmockingPattern'):
     # input: V nv-by-2(3) array, F list of array
@@ -480,7 +515,7 @@ def generate_grid_for_unit_pattern(base_x, base_y, if_add_diag=False):
     
     gx, gy = create_grid(base_x, base_y)
     F, V, _ = extract_graph_from_meshgrid(gx, gy, if_add_diag)
-    construct_object_from_mesh_to_scene(V, F, 'Grid')
+    construct_object_from_mesh_to_scene(V, F, 'Grid', 'UnitSmockingPattern')
     
 
     mesh = bpy.data.objects['Grid']
@@ -577,7 +612,8 @@ class FinishCurrentDrawing(Operator):
         if not props.if_curr_drawing_is_shown:
             mesh = bpy.data.objects['Grid']
             pts = get_vtx_pos(mesh, props.currentDrawing)
-            draw_stitching_line(pts, props.colTmp)
+            draw_stitching_line(pts, props.colTmp, "stitching_line_tmp", strokeSize, 'UnitStitchingLines')
+        
             props.if_curr_drawing_is_shown = True
 
         props.if_user_is_drawing = False
@@ -631,7 +667,7 @@ class SaveCurrentStitchingLine(Operator):
         
         delete_all_gpencil_objects()
         
-        draw_saved_stitching_lines(context)
+        draw_saved_stitching_lines(context, 'UnitStitchingLines')
         
         props.if_curr_drawing_is_shown = True
         
@@ -679,13 +715,12 @@ class ImportUnitPattern(Operator):
     bl_label = "Import a unit pattern"
     
     def execute(self, context):
+        # refresh the drawing of the unit pattern
+        initialize()
         
         file_name = bpy.path.abspath(context.scene.path_import)
         usp = read_usp(file_name)
         
-        # refresh the drawing of the unit pattern
-        
-        delete_all()
         usp.plot()
         # save the loaded pattern to the scene
         bpy.types.Scene.solver_data.unit_smocking_pattern = usp
@@ -718,7 +753,8 @@ class CreateGrid(Operator):
         add_text_to_scene(body="Unit Smocking Pattern", 
                           location=(0, base_y+0.5, 0), 
                           scale=(1,1,1),
-                          obj_name='grid_annotation')
+                          obj_name='grid_annotation',
+                          coll_name='UnitSmockingPattern')
                           
         # clear the old drawings
         props = bpy.types.Scene.sl_props
