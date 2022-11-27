@@ -19,18 +19,20 @@ from mathutils import Vector
 import numpy as np
 from bpy.types import Operator
 from bpy.types import (Panel, Operator)
+import os
 
 
+
+
+# ========================================================================
+#                          Global Variables
+# ========================================================================
 
 col_blue = (76/255.0, 201/255.0,240/255.0)
 col_yellow = (254/255.0, 228/255.0, 64/255.0)
 
 
-
-
-# ------------------------------------------------------------------------
-#    global variables
-# ------------------------------------------------------------------------
+# global variables from user input
 
 PROPS = [
     ('base_x', bpy.props.IntProperty(name='X', default=3, min=1, max=20)),
@@ -39,25 +41,140 @@ PROPS = [
     ('num_y', bpy.props.FloatProperty(name='Ytile', default=3, min=1, max=20)),
     ('shift_x', bpy.props.FloatProperty(name='Xshift', default=0, min=-1, max=1)),
     ('shift_y', bpy.props.FloatProperty(name='Yshift', default=0, min=-1, max=1)),
-    ('type_tile', bpy.props.EnumProperty(items = [("regular", "regular", "tile in a regular grid"), ("radial", "radial", "tile in a radial grid")], name="Tiling Type", default="regular"))]
+    ('type_tile', bpy.props.EnumProperty(items = [("regular", "regular", "tile in a regular grid"), ("radial", "radial", "tile in a radial grid")], name="Type", default="regular")),
+    ('path_export', bpy.props.StringProperty(subtype='DIR_PATH', name='PATH')),
+    ('filename_export', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
+    ('path_import', bpy.props.StringProperty(subtype='FILE_PATH', name='FILE'))]
     
+    
+# to extract the stitching lines from user selection
 
 class StitchingLinesProp():
     currentDrawing = []
     # so we dont show multiple current drawings when repeated click "Done"
     if_curr_drawing_is_shown = False 
-    
     if_user_is_drawing = True
-    
     savedStitchingLines = []
-    
     colSaved = col_blue
-    
     colTmp = col_yellow
+
+
+# data for optimization
+
+class SolverData():
+    unit_smocking_pattern = []
+    full_smocking_pattern = []
+    smocked_graph = []
+    embeded_graph = []
+    smocking_design = []    
+
+
+
+class debug_print(Operator):
+    bl_idname = "object.debug_print"
+    bl_label = "print data in scene"
     
-# ------------------------------------------------------------------------
-#    global variables
-# ------------------------------------------------------------------------
+    def execute(self, context):
+        props = bpy.types.Scene.sl_props
+        dt = bpy.types.Scene.solver_data
+        
+        usp = dt.unit_smocking_pattern
+        print('--------------------------------------------------------')
+        print('data stored in current scene:')
+        print('--------------------------------------------------------')
+        if usp:
+            print('Unit Smocking Pattern:')
+            print('gridX: ' + str(usp.base_x) + ', gridY: ' + str(usp.base_y))        
+            print('stitching points:')
+            print(usp.stitching_points)
+            
+        else:
+            print('Import the smokcing pattern first')
+        
+                
+        return {'FINISHED'}
+    
+    
+class debug_func(Operator):
+    bl_idname = "object.debug_func"
+    bl_label = "function to test"
+    
+    def execute(self, context):
+        print('debugging...')
+        
+        props = bpy.types.Scene.sl_props
+        dt = bpy.types.Scene.solver_data
+        usp = dt.unit_smocking_pattern
+        
+        
+        base_x = usp.base_x
+        base_y = usp.base_y
+        num_x = context.scene.num_x
+        num_y = context.scene.num_y
+        shift_x = context.scene.shift_x
+        shift_y = context.scene.shift_y
+        
+        len_x = num_x * base_x - shift_x
+        len_y = num_y * base_y - shift_y
+        
+        print(len_x, len_y)
+        
+        # create the full grid with size len_x by len_y
+        gx, gy = create_grid(len_x, len_y)
+        
+        F, V, E = extract_graph_from_meshgrid(gx, gy, True)
+        construct_object_from_mesh_to_scene(V, F, 'Grid')
+        
+        return {'FINISHED'}
+    
+
+# ========================================================================
+#                         classes for the solver
+# ========================================================================
+
+class UnitSmockingPattern():
+    """create a unit pattern"""
+        
+    def __init__(self, 
+                base_x, 
+                base_y,
+                stitching_lines,
+                stitching_points,
+                stitching_points_lineID):
+        self.base_x = base_x
+        self.base_y = base_y
+        self.stitching_lines = stitching_lines
+        self.stitching_points = stitching_points
+        self.stitching_points_lineID = stitching_points_lineID
+    
+    def plot(self):
+        obj = generate_grid_for_unit_pattern(self.base_x, self.base_y)
+        
+        add_text_to_scene(body="Unit Smocking Pattern", 
+                          location=(0, self.base_y+0.5, 0), 
+                          scale=(1,1,1),
+                          obj_name='grid_annotation')
+        
+        for lid in range(len(self.stitching_lines)):
+            pids = find_index_in_list(self.stitching_points_lineID, lid)
+            pos = np.array(self.stitching_points)[pids, :]
+            draw_stitching_line(pos, col_blue, "stitching_line_" + str(lid))
+        
+
+
+class SmockingPattern():
+    """Full Smocking Pattern"""
+    def __init__(self):
+        pass
+    
+    def plot(self):
+        pass
+
+    
+# ========================================================================
+#                          Utility Functions
+# ========================================================================
+
 def delete_collection():    
     for coll in bpy.data.collections:
         bpy.data.collections.remove(coll)
@@ -84,20 +201,26 @@ def deselect_all_vert_in_mesh(obj):
     bm = bmesh.from_edit_mesh(obj.data)     
     for v in bm.verts:
         v.select = False
-        
+
+
+
+def find_index_in_list(my_list, my_val):
+    return [i for i, x in enumerate(my_list) if x == my_val]
+
+    
 
 def add_text_to_scene(body="test",
                       location=(0,0,0),
                       scale=(1,1,1),
-                      obj_name="font_obj"):
+                      obj_name="font_obj",
+                      coll_name="SmockingPattern"):
                           
     font_curve = bpy.data.curves.new(type="FONT", name="Font Curve")
     font_curve.body = body
     font_obj = bpy.data.objects.new(name=obj_name, object_data=font_curve)
     font_obj.location = location
     font_obj.scale = scale
-#    bpy.context.scene.collection.objects.link(font_obj)
-    bpy.context.scene.collection.children['SmockingPattern'].objects.link(font_obj)
+    bpy.context.scene.collection.children[coll_name].objects.link(font_obj)
 
 
 
@@ -108,11 +231,100 @@ def get_curr_vtx_pos(mesh, vid1):
     p1[2] += mesh.matrix_world[2][3]
     return list(p1)
 
+
 def get_vtx_pos(mesh, vids):
     p = [];
     for vid in vids:
         p.append(get_curr_vtx_pos(mesh, vid))
     return p
+
+
+# ---------------------BEGIN: write/read unit-smocking-pattern ------------------------
+
+def get_usp_from_saved_stitching_lines(all_sl, mesh, base_x, base_y):
+    all_sp = []
+    all_sp_lid = []
+    
+    lid = 0
+    # write the stiching lines
+    for line in all_sl:
+        
+        for vid in line:
+            pos = list(mesh.data.vertices[vid].co)
+            all_sp.append(pos)
+            all_sp_lid.append(lid)
+    
+        lid += 1
+    
+    usp = UnitSmockingPattern(base_x, base_y, all_sl, all_sp, all_sp_lid)
+              
+    return usp
+
+
+def write_usp(file_name, usp):
+    file = open(file_name, 'w')
+    file.write('gridX\t' + str(usp.base_x) + "\n")
+    file.write('gridY\t' + str(usp.base_y) + "\n")
+    
+    # write the stitching lint point IDs - for blender
+    for line in usp.stitching_lines:
+        file.write('sl\t')
+        for vid in line:
+            file.write(str(vid)+"\t")
+        file.write("\n")
+    
+    for ii in range(len(usp.stitching_points_lineID)):
+        pos = usp.stitching_points[ii]
+        
+        lid = usp.stitching_points_lineID[ii]
+        
+        file.write('sp \t' + str(lid) + '\t')
+            
+        for val in pos:
+            file.write(str(val)+"\t")
+        file.write("\n")        
+        
+    file.close()
+
+    
+    
+    
+def read_usp(file_name):
+    file = open(file_name, 'r')
+    Lines = file.readlines()
+    
+    all_sl = [] # the stitching line (vtx ID)
+    all_sp = [] # all stitching points (positions)
+    all_sp_lid = [] # the stitching lineID of each point
+    
+    for line in Lines:
+        elems = line.split()
+        if elems:
+            if elems[0] == "gridX":
+                base_x = int(elems[1])
+            
+            elif elems[0] =="gridY":
+                base_y = int(elems[1])
+            
+            elif elems[0] == "sl":
+                sl = []
+                for ii in range(1, len(elems)):
+                    sl.append(int(elems[ii]))
+                
+                all_sl.append(sl)
+            
+            elif elems[0] == "sp":
+                all_sp_lid.append(int(elems[1]))
+                all_sp.append([ float(elems[2]), float(elems[3]), float(elems[4]) ])
+            
+            else:    
+                pass
+    
+    usp = UnitSmockingPattern(base_x, base_y, all_sl, all_sp, all_sp_lid)
+        
+    return usp
+
+# ---------------------END: write/read unit-smocking-pattern ------------------------
 
 
 
@@ -139,8 +351,8 @@ def create_line_stroke_from_gpencil(name="GPencil", line_width=12, coll_name='Sm
     return gpencil, gp_stroke
     
 
-def draw_stitching_line(pts, col): 
-    gpencil, gp_stroke = create_line_stroke_from_gpencil("all_stitching_line")
+def draw_stitching_line(pts, col, name="stitching_line"): 
+    gpencil, gp_stroke = create_line_stroke_from_gpencil(name)
     gp_stroke.points.add(len(pts))
 
     for item, value in enumerate(pts):
@@ -168,7 +380,7 @@ def draw_saved_stitching_lines(context):
         vids = props.savedStitchingLines[i]
         obj = bpy.data.objects['Grid']
         pts = get_vtx_pos(obj, vids)
-        draw_stitching_line(pts, props.colSaved)
+        draw_stitching_line(pts, props.colSaved, "stitching_line_" + str(i))
         
         
 def delete_all_gpencil_objects():
@@ -178,7 +390,7 @@ def delete_all_gpencil_objects():
             
             
 def construct_object_from_mesh_to_scene(V, F, mesh_name, coll_name='SmockingPattern'):
-    # input: V nv-by-2/3 array, F list of array
+    # input: V nv-by-2(3) array, F list of array
     
     # convert F into a list of list
     faces = F
@@ -191,8 +403,9 @@ def construct_object_from_mesh_to_scene(V, F, mesh_name, coll_name='SmockingPatt
     mesh.update(calc_edges=False) # we use our own edgeID
     object = bpy.data.objects.new(mesh_name, mesh)
     # link the object to the scene
-#    bpy.context.scene.collection.objects.link(object)
     bpy.context.scene.collection.children[coll_name].objects.link(object)
+    
+    
     
 
 def sort_edge(edges):
@@ -202,12 +415,23 @@ def sort_edge(edges):
     return e_unique
 
 
+
+
 def create_grid(num_x, num_y):
+#        scale = max(base_x, base_y)
+#        # subdivison a bit buggy here
+#        bpy.ops.mesh.primitive_grid_add(size=scale, 
+#                                        location=(base_x/2, base_y/2,0),
+#                                        x_subdivisions=base_x + 1,
+#                                        y_subdivisions=base_y + 1) 
+    
     xx = range(num_x+1) # [0, ..., num_x]
     yy = range(num_y+1) # [0, ..., num_y]    
     gx, gy = np.meshgrid(xx, yy)
 
     return gx, gy
+
+
 
 def extract_graph_from_meshgrid(gx, gy, if_add_diag=True):
     """extract the mesh/graph from the grid"""
@@ -226,7 +450,6 @@ def extract_graph_from_meshgrid(gx, gy, if_add_diag=True):
     top_right = ind[:numx-1, 1:numy]
     bottom_right = ind[1:numx, 1:numy]
     
-    
     # create the grid vertices: list of array - otherwise blender gets confused :/
     F = np.array([top_left.flatten().tolist(),
     top_right.flatten().tolist(),
@@ -237,7 +460,6 @@ def extract_graph_from_meshgrid(gx, gy, if_add_diag=True):
     # create the grid vertices: array
     V = np.array([gx.flatten().tolist(), gy.flatten().tolist()]).transpose()
     
-
     # create the grid edges: array
     E = [f[[0,1]] for f in F] + [f[[1,2]] for f in F] + [f[[2,3]] for f in F] + [f[[0,3]] for f in F]
         
@@ -252,27 +474,37 @@ def extract_graph_from_meshgrid(gx, gy, if_add_diag=True):
     return F, V, E
 
 
-class jing_test(Operator):
-    bl_idname = "object.func_test"
-    bl_label = "function to test"
+def generate_grid_for_unit_pattern(base_x, base_y, if_add_diag=False):
+    # there is some but in blender subdivison
+    # instead, manually create a grid
     
-    def execute(self, context):
-        delete_collection()
-        # New Collection
-        sp_coll = bpy.data.collections.new("SmockingPattern")
+    gx, gy = create_grid(base_x, base_y)
+    F, V, _ = extract_graph_from_meshgrid(gx, gy, if_add_diag)
+    construct_object_from_mesh_to_scene(V, F, 'Grid')
+    
 
-        # Add collection to scene collection
-        bpy.context.scene.collection.children.link(sp_coll)
-                
-        return {'FINISHED'}
+    mesh = bpy.data.objects['Grid']
+    mesh.scale = (1, 1, 1)
+    mesh.show_axis = False
+    mesh.show_wire = True
+    mesh.display_type = 'WIRE'
+    select_one_object(mesh)
+    
+    return mesh
+
+
+# ========================================================================
+#                          Functions for UIs
+# ========================================================================
+
 # ------------------------------------------------------------------------
 #    Drawing the Unit Pattern using mouse
 # ------------------------------------------------------------------------
 
 from bpy.props import IntProperty, FloatProperty
 
-class SelectStitchingPointOperator(Operator):
-    """Move an object with the mouse, example"""
+class SelectStitchingPoint(Operator):
+    """Draw a stitching line by selecting points in order"""
     bl_idname = "object.modal_operator"
     bl_label = "Simple Modal Operator"
    
@@ -303,6 +535,7 @@ class SelectStitchingPointOperator(Operator):
     
     def invoke(self, context, event):
         
+        
         delete_all_gpencil_objects()
         
         draw_saved_stitching_lines(context)
@@ -311,6 +544,8 @@ class SelectStitchingPointOperator(Operator):
         
         props.if_user_is_drawing = True
         props.if_curr_drawing_is_shown = False
+        context.window_manager.drawing_started = True
+        
         
 
         if props.if_user_is_drawing:
@@ -327,9 +562,10 @@ class SelectStitchingPointOperator(Operator):
             return {'CANCELLED'}
 
         
-class finishDrawing(Operator):
+class FinishCurrentDrawing(Operator):
+    """Finish drawing the current stitching line"""
     bl_idname = "edit.finish_drawing"
-    bl_label = "Finish Drawing the stitching line"
+    bl_label = "Finish drawing the current stitching line"
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
@@ -345,19 +581,50 @@ class finishDrawing(Operator):
             props.if_curr_drawing_is_shown = True
 
         props.if_user_is_drawing = False
+        context.window_manager.drawing_started = False
 
         return {'FINISHED'}
 
 
-class saveCurrentStitchingLine(Operator):
-    bl_idname = "edit.save_current_stitching_line"
-    bl_label = "Add one stiching line"
+class FinishPattern(Operator):
+    """Finish creating the unit smocking pattern"""
+    bl_idname = "edit.finish_creating_pattern"
+    bl_label = "Finish creating the unit smocking pattern"
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
+        
         props = bpy.context.scene.sl_props
+                
+        mesh = bpy.data.objects['Grid']
+        
+        usp = get_usp_from_saved_stitching_lines(props.savedStitchingLines, 
+                                                 mesh, 
+                                                 context.scene.base_x,
+                                                 context.scene.base_y)
+
+        delete_all()                               
+        usp.plot()
+        
+        # save the loaded pattern to the scene
+        bpy.types.Scene.solver_data.unit_smocking_pattern = usp
+        
+        return {'FINISHED'}
+
+
+
+class SaveCurrentStitchingLine(Operator):
+    """Save this stitching line"""
+    bl_idname = "edit.save_current_stitching_line"
+    bl_label = "Add one stiching line"
+    bl_options = {'REGISTER', 'UNDO'}
+        
+    def execute(self, context):
+        props = bpy.context.scene.sl_props
+        
         if props.currentDrawing:
             props.savedStitchingLines.append(props.currentDrawing)
+        
         props.currentDrawing = []
         
         print(props.savedStitchingLines)
@@ -372,24 +639,62 @@ class saveCurrentStitchingLine(Operator):
 
 
 
-class deleteCurrentStitchingLine(Operator):
-    bl_idname = "edit.delete_current_stitching_line"
-    bl_label = "delete the current one stiching line"
-    bl_options = {'REGISTER', 'UNDO'}
+
+
+class ExportUnitPattern(Operator):
+    """Export this unit smocking pattern"""
+    bl_idname = "object.export_unit_pattern"
+    bl_label = "Export the unit pattern to file"
+
     
     def execute(self, context):
-        props = bpy.context.scene.sl_props
-        props.currentDrawing = []
+        props = bpy.types.Scene.sl_props
+        save_dir = bpy.path.abspath(context.scene.path_export)
+        save_name = context.scene.filename_export
         
-        delete_all_gpencil_objects()
+        file_name = save_dir + save_name + '.usp'
         
-        draw_saved_stitching_lines(context)
         
-        props.if_curr_drawing_is_shown = True
+        usp = get_usp_from_saved_stitching_lines(props.savedStitchingLines, 
+                                                 bpy.data.objects['Grid'], 
+                                                 context.scene.base_x,
+                                                 context.scene.base_y)
+        write_usp(file_name, usp)
+#        
+#        write_usp(file_name, 
+#                  context.scene.base_x, 
+#                  context.scene.base_y, 
+#                  props.savedStitchingLines, 
+#                  bpy.data.objects['Grid'])
+                  
         
         return {'FINISHED'}
+    
 
+
+
+class ImportUnitPattern(Operator):
+    """Import an existing unit smocking pattern"""
+    bl_idname = "object.import_unit_pattern"
+    bl_label = "Import a unit pattern"
+    
+    def execute(self, context):
         
+        file_name = bpy.path.abspath(context.scene.path_import)
+        usp = read_usp(file_name)
+        
+        # refresh the drawing of the unit pattern
+        
+        delete_all()
+        usp.plot()
+        # save the loaded pattern to the scene
+        bpy.types.Scene.solver_data.unit_smocking_pattern = usp
+        
+        return {'FINISHED'}
+        
+    
+
+
 
 # ------------------------------------------------------------------------
 #    Create Unit Grid
@@ -400,42 +705,25 @@ class CreateGrid(Operator):
     bl_idname = "object.create_grid"
     bl_label = "Create Grid"
     bl_options = {'REGISTER', 'UNDO'}
+
     
 
     def execute(self, context):
         clean_objects()
         base_x = context.scene.base_x
         base_y = context.scene.base_y
-        # there is some but in blender subdivison
-#        scale = max(base_x, base_y)
-#        # subdivison a bit buggy here
-#        bpy.ops.mesh.primitive_grid_add(size=scale, 
-#                                        location=(base_x/2, base_y/2,0),
-#                                        x_subdivisions=base_x + 1,
-#                                        y_subdivisions=base_y + 1) 
         
-        
-        # instead, manually create a grid
-        gx, gy = create_grid(base_x, base_y)
-        F, V, _ = extract_graph_from_meshgrid(gx, gy, True)
-        construct_object_from_mesh_to_scene(V, F, 'Grid')
-        
-        
-        
-        mesh = bpy.data.objects['Grid']
-        mesh.scale = (1, 1, 1)
-        mesh.show_axis = False
-        mesh.show_wire = True
-        mesh.display_type = 'WIRE'
-        select_one_object(mesh)
+        generate_grid_for_unit_pattern(base_x, base_y)
         
         add_text_to_scene(body="Unit Smocking Pattern", 
                           location=(0, base_y+0.5, 0), 
                           scale=(1,1,1),
                           obj_name='grid_annotation')
-        
-        for vid in range(len(mesh.data.vertices)):
-            print(get_curr_vtx_pos(mesh, vid))
+                          
+        # clear the old drawings
+        props = bpy.types.Scene.sl_props
+        props.savedStitchingLines = []
+        props.currentDrawing = []
         
         return {'FINISHED'}
 
@@ -468,24 +756,55 @@ class FullSmockingPattern(Operator):
         return {'FINISHED'}
     
     
-# ------------------------------------------------------------------------
-#    define the add-on panel
-# ------------------------------------------------------------------------
+# ========================================================================
+#                          Draw the Panel
+# ========================================================================
 
-
-class GridPanel(bpy.types.Panel):
-    bl_label = "Unit Smocking Pattern"
-    bl_idname = "SD_PT_unit_grid"
+class debug_panel(bpy.types.Panel):
+    bl_label = "Debug :/"
+    bl_idname = "SD_PT_debug"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "SmockingDesign"
+    bl_options ={"HEADER_LAYOUT_EXPAND"}
     
     def draw(self, context):
         
+        row = self.layout.row()
+        row.operator(debug_print.bl_idname, text="print data in scene", icon='GHOST_ENABLED')
+        row = self.layout.row()
+        row.operator(debug_func.bl_idname, text="test function", icon="GHOST_DISABLED")
+
+
+
+class UnitGrid_panel:
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "SmockingDesign"
+    bl_options ={"HEADER_LAYOUT_EXPAND"}
+     
+    
+
+class UNITGRID_PT_main(UnitGrid_panel, bpy.types.Panel):
+    bl_label = "Unit Smocking Pattern"
+    bl_idname = "SD_PT_unit_grid_main"
+#    bl_options ={"HEADER_LAYOUT_EXPAND"}
+            
+    def draw(self, context):
+        pass
+
+    
+class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
+    bl_parent_id = 'SD_PT_unit_grid_main'
+    bl_label = "Create a New Smocking Pattern"
+#    bl_options ={"DEFAULT_CLOSED"}
+    
+    
+    def draw(self, context):
+        props = context.scene.sl_props
         layout = self.layout
         
-        
-        layout.label(text= "Create Unit Grid:")
+        layout.label(text= "Generate A Grid for Drawing:")
         row = layout.row()
         row.prop(context.scene,'base_x')
         row.prop(context.scene,'base_y')
@@ -494,30 +813,55 @@ class GridPanel(bpy.types.Panel):
         row = layout.row()
         row.operator(CreateGrid.bl_idname, text="Generate Grid", icon='GRID')
 
-
         
+        row = layout.row()
         layout.label(text= "Draw A Stitching Line")
         row = layout.row()
         
-        row.operator(SelectStitchingPointOperator.bl_idname, text="Draw", icon='LATTICE_DATA')
-        row.operator(finishDrawing.bl_idname, text="Done", icon='CHECKMARK')
+        if(not context.window_manager.drawing_started):
+            row.operator(SelectStitchingPoint.bl_idname, text="Draw", icon='GP_SELECT_POINTS')
+        else:
+            row.operator(FinishCurrentDrawing.bl_idname, text="Done", icon='CHECKMARK')
        
-        layout.label(text= "Save Current Drawing...or not")
+        row.operator(SaveCurrentStitchingLine.bl_idname, text="Add", icon='ADD')
+        
         row = layout.row()
-        row.operator(saveCurrentStitchingLine.bl_idname, text="Add", icon='FUND')
-        row.operator(deleteCurrentStitchingLine.bl_idname, text="Delete", icon='HEART')
+        row.operator(FinishPattern.bl_idname, text="Finish Unit Pattern Design", icon='FUND')
         
-               
-        
-        layout.label(text= "Load Existing Patterns:")
+         
         row = layout.row()
+        row = layout.row()        
+        layout.label(text= "Export the Created Unit Smocking Pattern")
+        row = layout.row()  
+        row.prop(context.scene, 'path_export')
+        row = layout.row()  
+        row.prop(context.scene, 'filename_export')
+        row = layout.row()  
+        row.operator(ExportUnitPattern.bl_idname, text="Export", icon='EXPORT')
         
-class FullGridPanel(bpy.types.Panel):
+                 
+
+class UNITGRID_PT_load(UnitGrid_panel, bpy.types.Panel):
+    bl_parent_id = 'SD_PT_unit_grid_main'
+    bl_label = "Load Existing Smocking Pattern"
+    bl_options ={"DEFAULT_CLOSED"}
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text= "Load an Existing Pattern")
+        row = layout.row()
+        row.prop(context.scene, 'path_import')
+        row = layout.row()  
+        row.operator(ImportUnitPattern.bl_idname, text="Import", icon='IMPORT')
+
+        
+class FullGrid_panel(bpy.types.Panel):
     bl_label = "Full Smocking Pattern"
     bl_idname = "SD_PT_full_grid"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "SmockingDesign"
+    bl_options ={"DEFAULT_CLOSED"}
     
     def draw(self, context):
         
@@ -535,27 +879,40 @@ class FullGridPanel(bpy.types.Panel):
         row = layout.row()
         row.operator(FullSmockingPattern.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
         
-        row = layout.row()
-        row.operator(jing_test.bl_idname, text="test", icon='GHOST_ENABLED')
         
+        
+# ========================================================================
+#                          Registration
+# ========================================================================
 
+wm = bpy.types.WindowManager
+wm.drawing_started = bpy.props.BoolProperty(default=False)
 
-# ------------------------------------------------------------------------
-#    Registration
-# ------------------------------------------------------------------------
 
 _classes = [
     CreateGrid,
-    saveCurrentStitchingLine,
-    deleteCurrentStitchingLine,
-    SelectStitchingPointOperator,
-    finishDrawing,
+    SaveCurrentStitchingLine,
+    SelectStitchingPoint,
+    FinishCurrentDrawing,
+    FinishPattern,
     
-    jing_test,
+    
+    debug_print,
+    debug_func,
+#    UnitSmockingPattern,
     
     FullSmockingPattern,
-    GridPanel,
-    FullGridPanel
+    
+    ExportUnitPattern,
+    ImportUnitPattern,
+    
+    debug_panel,
+    
+    UNITGRID_PT_main,
+    UNITGRID_PT_create,
+    UNITGRID_PT_load,
+    
+    FullGrid_panel
  ]
 
 
@@ -567,21 +924,27 @@ def register():
         bpy.utils.register_class(cls)
         
     bpy.types.Scene.sl_props = StitchingLinesProp()
+    bpy.types.Scene.solver_data = SolverData()
+    
 
 def unregister():
     for cls in _classes:
         bpy.utils.unregister_class(cls)
         
     del bpy.types.Scene.sf_props    
+    del bpy.tpyes.Scene.solver_data
 
 if __name__ == "__main__":
     register()
+#    bpy.ops.object.export_unit_pattern('INVOKE_DEFAULT')
 
 
 
 
+# ========================================================================
+#                         as useless as jing
+# ========================================================================
 
-# useless
 
 # TODO: some bug here - cannot click start twice :/
 #class startAddStitchingLines(Operator):
@@ -602,3 +965,62 @@ if __name__ == "__main__":
 #        bpy.ops.object.mode_set(mode = 'EDIT') 
 #        
 #        return {'FINISHED'}
+
+
+
+#class deleteCurrentStitchingLine(Operator):
+#    bl_idname = "edit.delete_current_stitching_line"
+#    bl_label = "delete the current one stiching line"
+#    bl_options = {'REGISTER', 'UNDO'}
+#    
+#    def execute(self, context):
+#        props = bpy.context.scene.sl_props
+#        props.currentDrawing = []
+#        
+#        delete_all_gpencil_objects()
+#        
+#        draw_saved_stitching_lines(context)
+#        
+#        props.if_curr_drawing_is_shown = True
+#        
+#        return {'FINISHED'}
+
+
+                          
+#        mesh = generate_grid(base_x, base_y)
+#        for vid in range(len(mesh.data.vertices)):
+#            print(get_curr_vtx_pos(mesh, vid))
+
+
+
+
+#def write_usp_old(file_name, base_x, base_y, savedStitchingLines, mesh):
+#    file = open(file_name, 'w')
+#    file.write('gridX\t' + str(base_x) + "\n")
+#    file.write('gridY\t' + str(base_y) + "\n")
+#    
+#    # write the stitching lint point IDs - for blender
+#    for line in savedStitchingLines:
+#        file.write('sl\t')
+#        for vid in line:
+#            file.write(str(vid)+"\t")
+#        file.write("\n")
+#    
+
+#    lid = 0
+#    # write the stiching lines
+#    for line in savedStitchingLines:
+#        
+#        for vid in line:
+#            pos = get_curr_vtx_pos(mesh, vid)
+#            
+#            file.write('sp \t' + str(lid) + '\t')
+#            
+#            for val in pos:
+#                file.write(str(val)+"\t")
+#            file.write("\n")
+#        
+#        lid += 1
+#        
+#            
+#    file.close()
