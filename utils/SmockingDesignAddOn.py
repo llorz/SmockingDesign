@@ -36,20 +36,29 @@ strokeSize = 10 # to plot the stiching lines
 # global variables from user input
 
 PROPS = [
+    # for unit grid
     ('base_x', bpy.props.IntProperty(name='X', default=3, min=1, max=20)),
     ('base_y', bpy.props.IntProperty(name='Y', default=3, min=1, max=20)),
+    # import/export stitching lines
+    ('path_export', bpy.props.StringProperty(subtype='DIR_PATH', name='Path',default='/tmp/')),
+    ('filename_export', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
+    ('path_import', bpy.props.StringProperty(subtype='FILE_PATH', name='File')),
+    # for full grid (full smocking pattern)
     ('num_x', bpy.props.FloatProperty(name='Xtile', default=3, min=1, max=20)),
     ('num_y', bpy.props.FloatProperty(name='Ytile', default=3, min=1, max=20)),
     ('shift_x', bpy.props.FloatProperty(name='Xshift', default=0, min=-10, max=10)),
     ('shift_y', bpy.props.FloatProperty(name='Yshift', default=0, min=-10, max=10)),
     ('type_tile', bpy.props.EnumProperty(items = [("regular", "regular", "tile in a regular grid"), ("radial", "radial", "tile in a radial grid")], name="Type", default="regular")),
-    ('path_export', bpy.props.StringProperty(subtype='DIR_PATH', name='PATH')),
-    ('filename_export', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
-    ('path_import', bpy.props.StringProperty(subtype='FILE_PATH', name='FILE')),
     ('margin_top', bpy.props.FloatProperty(name='Top', default=0, min=0, max=10)),
     ('margin_bottom', bpy.props.FloatProperty(name='Bottom', default=0, min=0, max=10)),
     ('margin_left', bpy.props.FloatProperty(name='Left', default=0, min=0, max=10)),
-    ('margin_right', bpy.props.FloatProperty(name='Right', default=0, min=0, max=10))    ]
+    ('margin_right', bpy.props.FloatProperty(name='Right', default=0, min=0, max=10)),
+    # export the full smocking pattern as obj
+    ('path_export_fullpattern', bpy.props.StringProperty(subtype='FILE_PATH', name='Path', default='/tmp/')),
+    ('filename_export_fullpattern', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
+    ('export_format', bpy.props.EnumProperty(items = [("OBJ", "OBJ", ""), ("OFF", "OFF", "")], name="Format", default="OBJ"))
+
+        ]
     
     
 # to extract the stitching lines from user selection
@@ -1036,7 +1045,52 @@ class FullSmockingPattern(Operator):
     
         return {'FINISHED'}
     
+
+class FSP_AddMargin(Operator):
+    bl_idname = "object.full_smocking_pattern_add_margin"
+    bl_label = "Add Margin to the Smocking Pattern"
+    bl_options = {'REGISTER', 'UNDO'}
     
+    def execute(self, context):
+        print('not done yet:/')
+        
+        return {'FINISHED'}
+    
+
+
+class FSP_Export(Operator):
+    bl_idname = "object.full_smocking_pattern_export"
+    bl_label = "Export the Smocking Pattern to A Mesh"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        print('not done yet:/')
+        
+        return {'FINISHED'}
+    
+
+class FSP_DeleteStitchingLines_start(Operator):
+    bl_idname = "object.fsp_delete_stitching_lines_start"
+    bl_label = "Delete stitching lines start"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        print('not done yet :/')
+        
+        return {'FINISHED'}
+
+
+
+class FSP_DeleteStitchingLines_done(Operator):
+    bl_idname = "object.fsp_delete_stitching_lines_done"
+    bl_label = "Delete stitching lines done"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        print('not done yet :/')
+        
+        return {'FINISHED'}
+
 # ========================================================================
 #                          Draw the Panel
 # ========================================================================
@@ -1079,7 +1133,7 @@ class UNITGRID_PT_main(UnitGrid_panel, bpy.types.Panel):
     
 class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
     bl_parent_id = 'SD_PT_unit_grid_main'
-    bl_label = "Create a New Smocking Pattern"
+    bl_label = "Create a New Pattern"
 #    bl_options ={"DEFAULT_CLOSED"}
     
     
@@ -1114,7 +1168,7 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
          
         row = layout.row()
         row = layout.row()        
-        layout.label(text= "Export the Created Unit Smocking Pattern")
+        layout.label(text= "Export Current Unit Smocking Pattern")
         row = layout.row()  
         row.prop(context.scene, 'path_export')
         row = layout.row()  
@@ -1126,33 +1180,51 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
 
 class UNITGRID_PT_load(UnitGrid_panel, bpy.types.Panel):
     bl_parent_id = 'SD_PT_unit_grid_main'
-    bl_label = "Load Existing Smocking Pattern"
+    bl_label = "Load Existing Pattern"
     bl_options ={"DEFAULT_CLOSED"}
     
     def draw(self, context):
         layout = self.layout
-        layout.label(text= "Load an Existing Pattern")
+#        layout.label(text= "Load an Existing Pattern")
         row = layout.row()
         row.prop(context.scene, 'path_import')
         row = layout.row()  
         row.operator(ImportUnitPattern.bl_idname, text="Import", icon='IMPORT')
 
-        
-class FullGrid_panel(bpy.types.Panel):
-    bl_label = "Full Smocking Pattern"
-    bl_idname = "SD_PT_full_grid"
+
+class FullGrid_panel():
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "SmockingDesign"
-    bl_options ={"DEFAULT_CLOSED"}
+    bl_options ={"HEADER_LAYOUT_EXPAND"}
+     
+    
+
+class FULLGRID_PT_main(FullGrid_panel, bpy.types.Panel):
+    bl_label = "Full Smocking Pattern"
+    bl_idname = "SD_PT_full_grid_main"
+#    bl_options ={"HEADER_LAYOUT_EXPAND"}
+            
+    def draw(self, context):
+        pass
+
+
+
+        
+class FULLGRID_PT_tile(FullGrid_panel, bpy.types.Panel):
+    bl_label = "Tile Unit Grid"
+    bl_parent_id = 'SD_PT_full_grid_main'
+
     
     def draw(self, context):
         
         layout = self.layout
-        layout.label(text= "Tiling Parameters")
+        layout.label(text= "Repeat the unit pattern:")
         row = layout.row()
         row.prop(context.scene,'num_x')
         row.prop(context.scene,'num_y')
+        
+        layout.label(text= "Shift the unit pattern:")
         row = layout.row()
         row.prop(context.scene,'shift_x')
         row.prop(context.scene,'shift_y')
@@ -1161,7 +1233,32 @@ class FullGrid_panel(bpy.types.Panel):
         row = layout.row()
         row.prop(context.scene, 'type_tile')
         
-        layout.label(text= "Add Margin")
+        row = layout.row()
+        row = layout.row()
+        row.operator(FullSmockingPattern.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
+
+
+
+class FULLGRID_PT_edit_pattern(FullGrid_panel, bpy.types.Panel):
+    bl_label = "Edit Pattern"
+    bl_parent_id = 'SD_PT_full_grid_main'
+    
+    def draw(self, context):
+        layout = self.layout
+        row = layout.row()
+        row.operator(FSP_DeleteStitchingLines_start.bl_idname, text="Delete Existing Stitching Lines", icon="CANCEL")
+        
+        
+        
+
+class FULLGRID_PT_add_margin(FullGrid_panel, bpy.types.Panel):
+    bl_label = "Add Margin"
+    bl_parent_id = 'SD_PT_full_grid_main'
+
+    
+    def draw(self, context):
+        
+        layout = self.layout
         row = layout.row()
         row.prop(context.scene,'margin_top')
         row.prop(context.scene,'margin_bottom')
@@ -1172,9 +1269,43 @@ class FullGrid_panel(bpy.types.Panel):
         
         row = layout.row()
         row = layout.row()
-        row.operator(FullSmockingPattern.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
+        row.operator(FSP_AddMargin.bl_idname, text="Add Margin to Pattern", icon='OBJECT_DATAMODE')
+
+
+
+class FULLGRID_PT_export_mesh(FullGrid_panel, bpy.types.Panel):
+    bl_label = "Export Pattern to Mesh"
+    bl_parent_id = 'SD_PT_full_grid_main'
+    
+    def draw(self, context):
+        layout = self.layout
+        row = layout.row()  
+        row.prop(context.scene, 'path_export_fullpattern')
+
+       
+        row = layout.row()
+        row.prop(context.scene, 'filename_export_fullpattern')
         
+        row = layout.row()
+        row.prop(context.scene, 'export_format')
         
+        row = layout.row()
+        row = layout.row()
+        row.operator(FSP_Export.bl_idname, text="Export", icon='EXPORT')
+
+        
+class SmockedGraph_panel(bpy.types.Panel):
+    bl_label = "Smocked Graph"
+    bl_idname = "SD_PT_smocked_graph"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "SmockingDesign"
+    bl_options ={"DEFAULT_CLOSED"}
+   
+    def draw(self, context):
+        layout = self.layout
+        
+    
         
 # ========================================================================
 #                          Registration
@@ -1197,6 +1328,10 @@ _classes = [
 #    UnitSmockingPattern,
     
     FullSmockingPattern,
+    FSP_AddMargin,
+    FSP_Export,
+    FSP_DeleteStitchingLines_start,
+    FSP_DeleteStitchingLines_done,
     
     ExportUnitPattern,
     ImportUnitPattern,
@@ -1207,7 +1342,13 @@ _classes = [
     UNITGRID_PT_create,
     UNITGRID_PT_load,
     
-    FullGrid_panel
+    FULLGRID_PT_main,
+    FULLGRID_PT_tile,
+    FULLGRID_PT_edit_pattern,
+    FULLGRID_PT_add_margin,
+    FULLGRID_PT_export_mesh,
+    
+    SmockedGraph_panel
  ]
 
 
