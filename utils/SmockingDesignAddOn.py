@@ -56,8 +56,12 @@ PROPS = [
     # export the full smocking pattern as obj
     ('path_export_fullpattern', bpy.props.StringProperty(subtype='FILE_PATH', name='Path', default='/tmp/')),
     ('filename_export_fullpattern', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
-    ('export_format', bpy.props.EnumProperty(items = [(".obj", "OBJ", ".obj"), (".off", "OFF", ".off")], name="Format", default=".obj"))
-
+    ('export_format', bpy.props.EnumProperty(items = [(".obj", "OBJ", ".obj"), (".off", "OFF", ".off")], name="Format", default=".obj")),
+    # FSP: combine two patterns
+    ('file_import_p1', bpy.props.StringProperty(subtype='FILE_PATH', name='P1')),
+    ('file_import_p2', bpy.props.StringProperty(subtype='FILE_PATH', name='P2')),
+    ('combine_direction', bpy.props.EnumProperty(items = [("x", "x", "x"), ("y", "y", "y")], name="Axis", default="x")),
+    ('combine_space', bpy.props.FloatProperty(name='space', default=2, min=1, max=20))
         ]
     
     
@@ -933,7 +937,7 @@ class USP_SelectStitchingPoint(Operator):
         
         props.if_user_is_drawing = True
         props.if_curr_drawing_is_shown = False
-        context.window_manager.drawing_started = True
+        context.window_manager.usp_drawing_started = True
         
         
 
@@ -971,7 +975,7 @@ class USP_FinishCurrentDrawing(Operator):
             props.if_curr_drawing_is_shown = True
 
         props.if_user_is_drawing = False
-        context.window_manager.drawing_started = False
+        context.window_manager.usp_drawing_started = False
 
         return {'FINISHED'}
 
@@ -1171,6 +1175,7 @@ class FSP_AddMargin(Operator):
         dt = bpy.types.Scene.solver_data
         fsp = dt.full_smocking_pattern
         
+        
         V = fsp.V
         
         gx, gy = add_margin_to_grid(np.unique(V[:,0]), np.unique(V[:, 1]),
@@ -1232,8 +1237,7 @@ class FSP_DeleteStitchingLines_done(Operator):
         fsp = dt.full_smocking_pattern
         trans = get_translation_of_mesh('FullPattern')
         
-        
-        
+          
         all_sp = []
         all_sp_lid = []
         lid = 0
@@ -1256,12 +1260,124 @@ class FSP_DeleteStitchingLines_done(Operator):
         all_sp_pid = all_sp_lid # now patchID is useless
         
         
-        
         fsp.update_stitching_lines(all_sp, all_sp_lid, all_sp_pid)
         
         fsp.plot()
                     
         return {'FINISHED'}
+
+
+
+
+class FSP_AddStitchingLines_draw_start(Operator):
+    bl_idname = "object.fsp_add_stitching_lines_draw_start"
+    bl_label = "Start drawing a new stitching line"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        print('not done yet :/')
+        return {'FINISHED'}
+
+
+
+
+class FSP_AddStitchingLines_draw_end(Operator):
+    bl_idname = "object.fsp_add_stitching_lines_draw_end"
+    bl_label = "Finish drawing a new stitching line"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        print('not done yet :/')
+        return {'FINISHED'}
+
+
+
+
+class FSP_AddStitchingLines_draw_add(Operator):
+    bl_idname = "object.fsp_add_stitching_lines_draw_add"
+    bl_label = "Add this new stitching line"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        print('not done yet :/')
+        return {'FINISHED'}
+
+
+
+
+
+class FSP_AddStitchingLines_draw_finish(Operator):
+    bl_idname = "object.fsp_add_stitching_lines_draw_finish"
+    bl_label = "Finish adding stitching lines"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        print('not done yet :/')
+        return {'FINISHED'}
+
+
+class FSP_EditMesh_start(Operator):
+    bl_idname = "object.fsp_edit_mesh_start"
+    bl_label = "Edit the mesh of the smocking pattern"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        
+        bpy.ops.object.select_all(action='DESELECT')
+        
+        bpy.data.objects['FullPattern'].select_set(True)
+        
+        bpy.ops.object.mode_set(mode = 'EDIT') 
+        
+        return {'FINISHED'}
+    
+    
+class FSP_EditMesh_done(Operator):
+    bl_idname = "object.fsp_edit_mesh_done"
+    bl_label = "Finish the edits and update the smocking pattern"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        print('not done yet :/')
+        return {'FINISHED'}
+
+
+
+class FSP_CombinePatterns_load_first(Operator):
+    bl_idname = "object.fsp_combine_patterns_load_first"
+    bl_label = "Load the first pattern"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        print('not done yet :/')
+        return {'FINISHED'}
+
+
+
+    
+    
+class FSP_CombinePatterns_load_second(Operator):
+    bl_idname = "object.fsp_combine_patterns_load_second"
+    bl_label = "Load the second pattern"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        print('not done yet :/')
+        return {'FINISHED'}
+
+
+
+
+class FSP_CombinePatterns(Operator):
+    bl_idname = "object.fsp_combine_patterns"
+    bl_label = "Combined two patterns"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        print('not done yet :/')
+        return {'FINISHED'}
+
+
 
 # ========================================================================
 #                          Draw the Panel
@@ -1327,7 +1443,7 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
         layout.label(text= "Draw A Stitching Line")
         row = layout.row()
         
-        if(not context.window_manager.drawing_started):
+        if(not context.window_manager.usp_drawing_started):
             row.operator(USP_SelectStitchingPoint.bl_idname, text="Draw", icon='GREASEPENCIL')
         else:
             row.operator(USP_FinishCurrentDrawing.bl_idname, text="Done", icon='CHECKMARK')
@@ -1411,8 +1527,40 @@ class FULLGRID_PT_tile(FullGrid_panel, bpy.types.Panel):
 
 
 
+
+
+
+class FULLGRID_PT_combine_patterns(FullGrid_panel, bpy.types.Panel):
+    bl_label = "Combine Two Patterns"
+    bl_parent_id = 'SD_PT_full_grid_main'
+    
+    def draw(self, context):
+        layout = self.layout
+        row = layout.row()
+        row.prop(context.scene, 'file_import_p1')
+        row.operator(FSP_CombinePatterns_load_first.bl_idname, text="Import", icon='IMPORT')
+        
+        row = layout.row()
+        row.prop(context.scene, 'file_import_p2')
+        row.operator(FSP_CombinePatterns_load_second.bl_idname, text="Import", icon='IMPORT')
+
+
+        layout.label(text= "Parameters:")
+        row = layout.row()
+        row.prop(context.scene, 'combine_direction')
+        row.prop(context.scene, 'combine_space')
+        
+        row = layout.row()
+        row.operator(FSP_CombinePatterns.bl_idname, text="Combined Two Patterns", icon="NODE_COMPOSITING")
+
+
+
+
+
+
+
 class FULLGRID_PT_edit_pattern(FullGrid_panel, bpy.types.Panel):
-    bl_label = "Edit Pattern"
+    bl_label = "Edit Current Pattern"
     bl_parent_id = 'SD_PT_full_grid_main'
     
     def draw(self, context):
@@ -1422,13 +1570,29 @@ class FULLGRID_PT_edit_pattern(FullGrid_panel, bpy.types.Panel):
         row.operator(FSP_DeleteStitchingLines_start.bl_idname, text="Delete", icon="PANEL_CLOSE")
         row.operator(FSP_DeleteStitchingLines_done.bl_idname, text="Done", icon="CHECKMARK")
         
+        
         layout.label(text= "Add New Stitching Lines")
         row = layout.row()
+        if(not context.window_manager.fsp_drawing_started):
+            row.operator(FSP_AddStitchingLines_draw_start.bl_idname, text="Draw", icon='GREASEPENCIL')
+        else:
+            row.operator(FSP_AddStitchingLines_draw_end.bl_idname, text="Done", icon='CHECKMARK')
+        
+        row.operator(FSP_AddStitchingLines_draw_add.bl_idname, text="Add", icon='ADD')
+        row = layout.row()
+        row.operator(FSP_AddStitchingLines_draw_finish.bl_idname, text="Finish Unit Pattern Design", icon='FUND')
+        
+        
+        layout.label(text= "Edit the Smocking Grid")
+        row = layout.row()
+        row.operator(FSP_EditMesh_start.bl_idname, text="Edit", icon="EDITMODE_HLT")
+        row.operator(FSP_EditMesh_done.bl_idname, text="Done", icon="CHECKMARK")
+        
         
         
 
 class FULLGRID_PT_add_margin(FullGrid_panel, bpy.types.Panel):
-    bl_label = "Add Margin"
+    bl_label = "Add Margin to Current Pattern"
     bl_parent_id = 'SD_PT_full_grid_main'
 
     
@@ -1450,7 +1614,7 @@ class FULLGRID_PT_add_margin(FullGrid_panel, bpy.types.Panel):
 
 
 class FULLGRID_PT_export_mesh(FullGrid_panel, bpy.types.Panel):
-    bl_label = "Export Pattern to Mesh"
+    bl_label = "Export Current Pattern to Mesh"
     bl_parent_id = 'SD_PT_full_grid_main'
     
     def draw(self, context):
@@ -1488,31 +1652,43 @@ class SmockedGraph_panel(bpy.types.Panel):
 # ========================================================================
 
 wm = bpy.types.WindowManager
-wm.drawing_started = bpy.props.BoolProperty(default=False)
+wm.usp_drawing_started = bpy.props.BoolProperty(default=False)
+wm.fsp_drawing_started = bpy.props.BoolProperty(default=False)
 
 
 _classes = [
+    
+    debug_clear,
+    debug_print,
+    debug_func,
+
+    debug_panel,
+    
+    
     USP_CreateGrid,
     USP_SaveCurrentStitchingLine,
     USP_SelectStitchingPoint,
     USP_FinishCurrentDrawing,
     USP_FinishPattern,
-    
-    debug_clear,
-    debug_print,
-    debug_func,
-#    UnitSmockingPattern,
+    ExportUnitPattern,
+    ImportUnitPattern,
+        
     
     FSP_Tile,
     FSP_AddMargin,
     FSP_Export,
     FSP_DeleteStitchingLines_start,
     FSP_DeleteStitchingLines_done,
+    FSP_EditMesh_start,
+    FSP_EditMesh_done,
+    FSP_AddStitchingLines_draw_start,
+    FSP_AddStitchingLines_draw_end,
+    FSP_AddStitchingLines_draw_add,    
+    FSP_AddStitchingLines_draw_finish,
+    FSP_CombinePatterns_load_first,
+    FSP_CombinePatterns_load_second,
+    FSP_CombinePatterns,
     
-    ExportUnitPattern,
-    ImportUnitPattern,
-    
-    debug_panel,
     
     UNITGRID_PT_main,
     UNITGRID_PT_create,
@@ -1520,6 +1696,7 @@ _classes = [
     
     FULLGRID_PT_main,
     FULLGRID_PT_tile,
+    FULLGRID_PT_combine_patterns,
     FULLGRID_PT_edit_pattern,
     FULLGRID_PT_add_margin,
     FULLGRID_PT_export_mesh,
