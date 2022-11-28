@@ -1164,8 +1164,12 @@ class FSP_DeleteStitchingLines_start(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        print('not done yet :/')
+        bpy.ops.object.select_all(action='DESELECT')
         
+        # select all stitching lines in the full pattern
+        for obj in bpy.data.collections['StitchingLines'].objects:
+            obj.select_set(True)
+            
         return {'FINISHED'}
 
 
