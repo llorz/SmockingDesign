@@ -197,7 +197,7 @@ class UnitSmockingPattern():
         for lid in range(len(self.stitching_lines)):
             pos = self.get_pts_in_stitching_line(lid)
             draw_stitching_line(pos, col_blue, "stitching_line_" + str(lid), strokeSize, 'UnitStitchingLines')
-        
+#            add_stroke_to_gpencil(pos, col_blue, "USP_StitchingLines", strokeSize)
 
     def info(self):
         print('------------------------------')
@@ -245,6 +245,12 @@ class SmockingPattern():
         self.F = F_new
         self.E = E_new
         # update the stitching points ID since the V is updated
+        self.get_stitching_points_vtx_id()
+    
+    def update_stitching_lines(self, all_sp, all_sp_lid, all_sp_pid):
+        self.stitching_points = np.array(all_sp)
+        self.stitching_points_line_id = np.array(all_sp_lid)
+        self.stitching_points_patch_id = np.array(all_sp_pid)
         self.get_stitching_points_vtx_id()
         
     def get_vid_in_stitching_line(self, lid):
@@ -300,7 +306,9 @@ class SmockingPattern():
             
             # draw the stitching lines in the world coordinate
             draw_stitching_line(pos, col_blue, "stitching_line_" + str(lid), strokeSize, 'StitchingLines')
-        
+#            add_stroke_to_gpencil(pos, col_blue, "FSP_StitchingLines", strokeSize)
+            
+            
     
     def info(self):
         print('------------------------------')
@@ -383,6 +391,11 @@ def get_curr_vtx_pos(mesh, vid1):
     p1[1] += mesh.matrix_world[1][3]
     p1[2] += mesh.matrix_world[2][3]
     return list(p1)
+
+def get_translation_of_mesh(mesh_name):
+    mesh = bpy.data.objects[mesh_name]
+    return [mesh.matrix_world[0][3], mesh.matrix_world[1][3], mesh.matrix_world[2][3]]
+
 
 
 
@@ -543,6 +556,38 @@ def read_usp(file_name):
 # https://gist.github.com/blender8r/4688b3f05640737236c856bc7df47bee
 # https://www.youtube.com/watch?v=csQNmnc5xQg
 
+def add_stroke_to_gpencil(pts, col, gpencil_name, line_width=12):
+    gpencil = bpy.data.grease_pencils[gpencil_name]
+        
+    gp_layer = gpencil.layers.new("lines")
+
+    gp_frame = gp_layer.frames.new(bpy.context.scene.frame_current)
+
+
+    gp_stroke = gp_frame.strokes.new()
+    gp_stroke.line_width = line_width
+    gp_stroke.start_cap_mode = 'ROUND'
+    gp_stroke.end_cap_mode = 'ROUND'
+    gp_stroke.use_cyclic = False
+    gp_stroke.points.add(len(pts))
+
+    for item, value in enumerate(pts):
+        gp_stroke.points[item].co = value
+        gp_stroke.points[item].pressure = 10
+        
+    mat = bpy.data.materials.new(name="Black")
+    bpy.data.materials.create_gpencil_data(mat)
+    gpencil.materials.append(mat)
+    mat.grease_pencil.show_fill = False
+#    mat.grease_pencil.fill_color = (1.0, 0.0, 1.0, 1.0)
+    mat.grease_pencil.color = (col[0], col[1], col[2], 1.0)
+    
+    if len(pts) > 2:
+        gp_stroke.points[0].pressure = 2
+        gp_stroke.points[-1].pressure = 2
+    
+    
+
 def create_line_stroke_from_gpencil(name="GPencil", line_width=12, coll_name='SmockingPattern'):
     gpencil_data = bpy.data.grease_pencils.new(name)
     gpencil = bpy.data.objects.new(gpencil_data.name, gpencil_data)
@@ -690,7 +735,8 @@ def initialize():
     my_coll = bpy.data.collections.new('SmockedGraph')
     bpy.context.scene.collection.children.link(my_coll)
     
-
+    
+    
 # ========================================================================
 #                      Core functions for smocking pattern
 # ========================================================================
@@ -1182,6 +1228,39 @@ class FSP_DeleteStitchingLines_done(Operator):
     def execute(self, context):
         print('not done yet :/')
         
+        dt = bpy.types.Scene.solver_data
+        fsp = dt.full_smocking_pattern
+        trans = get_translation_of_mesh('FullPattern')
+        
+        
+        
+        all_sp = []
+        all_sp_lid = []
+        lid = 0
+        # check the remaining stitching lines
+        saved_sl_names = []
+        for obj in bpy.data.collections['StitchingLines'].objects:
+            saved_sl_names.append(obj.name)
+        print(saved_sl_names)
+        for sl_name in saved_sl_names:
+            gp = bpy.data.grease_pencils[sl_name]
+            pts = gp.layers.active.active_frame.strokes[0].points
+            for p in pts:
+                # p is in the world coordinate
+                # need to translate it back to the grid-coordinate
+                all_sp.append([p.co[0]-trans[0], p.co[1]-trans[1], p.co[2]-trans[2]])
+                all_sp_lid.append(lid)
+            lid += 1
+            
+
+        all_sp_pid = all_sp_lid # now patchID is useless
+        
+        
+        
+        fsp.update_stitching_lines(all_sp, all_sp_lid, all_sp_pid)
+        
+        fsp.plot()
+                    
         return {'FINISHED'}
 
 # ========================================================================
