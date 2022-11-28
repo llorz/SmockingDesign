@@ -241,6 +241,9 @@ class SmockingPattern():
         all_sp_vid = []
         for ii in range(len(self.stitching_points)):
             vid = find_matching_rowID(self.V, self.stitching_points[ii,0:2])
+            
+#            print(self.stitching_points[ii, 0:2])
+            
             all_sp_vid.append(vid[0][0].tolist())
         self.stitching_points_vtx_id = np.array(all_sp_vid)
     
@@ -714,6 +717,40 @@ def find_matching_rowID(V, pos):
     return ind
 
 
+        
+
+def refresh_stitching_lines():  
+    all_sp = []
+    all_sp_lid = []
+    lid = 0
+    
+    trans = get_translation_of_mesh('FullPattern') 
+    
+    # check the remaining stitching lines
+    saved_sl_names = []
+    for obj in bpy.data.collections['StitchingLines'].objects:
+        saved_sl_names.append(obj.name)
+#    print(saved_sl_names)
+    
+    for sl_name in saved_sl_names:
+        gp = bpy.data.grease_pencils[sl_name]
+        pts = gp.layers.active.active_frame.strokes[0].points
+
+        for p in pts:
+            # p is in the world coordinate
+            # need to translate it back to the grid-coordinate
+            all_sp.append([p.co[0]-trans[0], p.co[1]-trans[1], p.co[2]-trans[2]])
+            all_sp_lid.append(lid)
+        lid += 1
+        
+
+    all_sp_pid = all_sp_lid # now patchID is useless
+    
+    return all_sp, all_sp_lid, all_sp_pid
+
+
+
+
     
 def initialize():
     delete_collection()
@@ -777,7 +814,7 @@ def add_margin_to_grid(x_ticks, y_ticks,
     min_y = min(y_ticks)
     max_y = max(y_ticks)
     
-    print(min_x, max_x, min_y, max_y)
+#    print(min_x, max_x, min_y, max_y)
     
     xx = [-m_left + min_x] + list(np.unique(x_ticks)) + [max_x + m_right]
     yy = [-m_bottom + min_y] + list(np.unique(y_ticks)) + [max_y + m_top]
@@ -817,7 +854,7 @@ def extract_graph_from_meshgrid(gx, gy, if_add_diag=True):
     E = [f[[0,1]] for f in F] + [f[[1,2]] for f in F] + [f[[2,3]] for f in F] + [f[[0,3]] for f in F]
         
     if if_add_diag: # also add the grid diagonal edges
-        print('Add diagonal edges')
+#        print('Add diagonal edges')
         E = E + [f[[0,2]] for f in F] + [f[[1,3]] for f in F]
         
     E = sort_edge(E)
@@ -881,7 +918,8 @@ def tile_unit_smocking_pattern_regular(usp, num_x, num_y, shift_x, shift_y):
             
             pid += 1
     return  all_sp, all_sp_lid, all_sp_pid, len_x, len_y
-        
+
+
 
 
 
@@ -909,7 +947,7 @@ class USP_SelectStitchingPoint(Operator):
         
             if event.type == 'LEFTMOUSE':
 
-                print('I hit the left mouse')
+#                print('I hit the left mouse')
                 
                 obj = bpy.data.objects['Grid']
                 bm = bmesh.from_edit_mesh(obj.data)
@@ -1021,7 +1059,7 @@ class USP_SaveCurrentStitchingLine(Operator):
         
         props.currentDrawing = []
         
-        print(props.savedStitchingLines)
+#        print(props.savedStitchingLines)
         
         clean_objects_in_collection('UnitStitchingLines')
         
@@ -1196,7 +1234,7 @@ class FSP_Export(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        print('not done yet:/')
+        
         dt = bpy.types.Scene.solver_data
         
         save_dir = bpy.path.abspath(context.scene.path_export_fullpattern)
@@ -1224,6 +1262,8 @@ class FSP_DeleteStitchingLines_start(Operator):
         return {'FINISHED'}
 
 
+    
+    
 
 class FSP_DeleteStitchingLines_done(Operator):
     bl_idname = "object.fsp_delete_stitching_lines_done"
@@ -1231,34 +1271,12 @@ class FSP_DeleteStitchingLines_done(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        print('not done yet :/')
-        
+         
         dt = bpy.types.Scene.solver_data
         fsp = dt.full_smocking_pattern
-        trans = get_translation_of_mesh('FullPattern')
         
-          
-        all_sp = []
-        all_sp_lid = []
-        lid = 0
-        # check the remaining stitching lines
-        saved_sl_names = []
-        for obj in bpy.data.collections['StitchingLines'].objects:
-            saved_sl_names.append(obj.name)
-        print(saved_sl_names)
-        for sl_name in saved_sl_names:
-            gp = bpy.data.grease_pencils[sl_name]
-            pts = gp.layers.active.active_frame.strokes[0].points
-            for p in pts:
-                # p is in the world coordinate
-                # need to translate it back to the grid-coordinate
-                all_sp.append([p.co[0]-trans[0], p.co[1]-trans[1], p.co[2]-trans[2]])
-                all_sp_lid.append(lid)
-            lid += 1
-            
-
-        all_sp_pid = all_sp_lid # now patchID is useless
         
+        all_sp, all_sp_lid, all_sp_pid = refresh_stitching_lines()
         
         fsp.update_stitching_lines(all_sp, all_sp_lid, all_sp_pid)
         
@@ -1274,9 +1292,54 @@ class FSP_AddStitchingLines_draw_start(Operator):
     bl_label = "Start drawing a new stitching line"
     bl_options = {'REGISTER', 'UNDO'}
     
-    def execute(self, context):
-        print('not done yet :/')
-        return {'FINISHED'}
+    def modal(self, context, event):
+        
+        props = bpy.context.scene.sl_props
+        
+        if props.if_user_is_drawing:
+        
+            if event.type == 'LEFTMOUSE':
+
+                obj = bpy.data.objects['FullPattern']
+                bm = bmesh.from_edit_mesh(obj.data)
+
+                for v in bm.verts:
+                    if v.select:
+                        if v.index not in props.currentDrawing:
+                            props.currentDrawing.append(v.index)
+#                            print(props.currentDrawing)
+        else:
+            return{'CANCELLED'}
+        
+        return {'PASS_THROUGH'}
+        
+
+    
+    def invoke(self, context, event):
+        
+        # remove the temporay stitching lines
+        props = bpy.context.scene.sl_props
+        for obj in bpy.data.collections['StitchingLines'].objects:
+            if 'tmp' in obj.name:
+                bpy.data.objects.remove(obj)
+         
+        props.if_user_is_drawing = True
+        props.if_curr_drawing_is_shown = False
+        context.window_manager.fsp_drawing_started = True
+        
+
+        if props.if_user_is_drawing:
+            props.currentDrawing = []
+            bpy.ops.object.mode_set(mode = 'EDIT') 
+            
+            obj = bpy.data.objects['FullPattern']
+            deselect_all_vert_in_mesh(obj)
+            
+            context.window_manager.modal_handler_add(self)
+            return {'RUNNING_MODAL'}
+        else:
+            self.report({'WARNING'}, "No active object, could not finish")
+            return {'CANCELLED'}
 
 
 
@@ -1287,7 +1350,19 @@ class FSP_AddStitchingLines_draw_end(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        print('not done yet :/')
+        bpy.ops.object.mode_set(mode = 'OBJECT')
+        
+        props = bpy.context.scene.sl_props
+        
+        if not props.if_curr_drawing_is_shown:
+            mesh = bpy.data.objects['FullPattern']
+            pts = get_vtx_pos(mesh, props.currentDrawing)
+            draw_stitching_line(pts, props.colTmp, "stitching_line_tmp", strokeSize, 'StitchingLines')
+        
+            props.if_curr_drawing_is_shown = True
+
+        props.if_user_is_drawing = False
+        context.window_manager.fsp_drawing_started = False
         return {'FINISHED'}
 
 
@@ -1299,7 +1374,13 @@ class FSP_AddStitchingLines_draw_add(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        print('not done yet :/')
+        
+        for obj in bpy.data.collections['StitchingLines'].objects:
+            if 'tmp' in obj.name:
+                new_name = "new_stitching_line_" + str(len(bpy.data.collections['StitchingLines'].objects)-1)
+                bpy.data.grease_pencils[obj.name].name = new_name
+                obj.name = new_name
+        
         return {'FINISHED'}
 
 
@@ -1312,8 +1393,17 @@ class FSP_AddStitchingLines_draw_finish(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        print('not done yet :/')
+        dt = bpy.types.Scene.solver_data
+        fsp = dt.full_smocking_pattern
+        
+        all_sp, all_sp_lid, all_sp_pid = refresh_stitching_lines()
+        
+        fsp.update_stitching_lines(all_sp, all_sp_lid, all_sp_pid)
+        
+        fsp.plot()
+                    
         return {'FINISHED'}
+
 
 
 class FSP_EditMesh_start(Operator):
@@ -1580,7 +1670,7 @@ class FULLGRID_PT_edit_pattern(FullGrid_panel, bpy.types.Panel):
         
         row.operator(FSP_AddStitchingLines_draw_add.bl_idname, text="Add", icon='ADD')
         row = layout.row()
-        row.operator(FSP_AddStitchingLines_draw_finish.bl_idname, text="Finish Unit Pattern Design", icon='FUND')
+        row.operator(FSP_AddStitchingLines_draw_finish.bl_idname, text="Finish Adding Extra Stitching Lines", icon='FUND')
         
         
         layout.label(text= "Edit the Smocking Grid")
