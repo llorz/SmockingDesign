@@ -56,7 +56,7 @@ PROPS = [
     # export the full smocking pattern as obj
     ('path_export_fullpattern', bpy.props.StringProperty(subtype='FILE_PATH', name='Path', default='/tmp/')),
     ('filename_export_fullpattern', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
-    ('export_format', bpy.props.EnumProperty(items = [("OBJ", "OBJ", ""), ("OFF", "OFF", "")], name="Format", default="OBJ"))
+    ('export_format', bpy.props.EnumProperty(items = [(".obj", "OBJ", ".obj"), (".off", "OFF", ".off")], name="Format", default=".obj"))
 
         ]
     
@@ -109,7 +109,7 @@ class debug_print(Operator):
         usp = dt.unit_smocking_pattern
         fsp = dt.full_smocking_pattern
         print('--------------------------------------------------------')
-        print('data stored in current scene:')
+        print('- data stored in current scene:')
         print('--------------------------------------------------------')
         if usp and fsp:
             usp.info()
@@ -120,10 +120,6 @@ class debug_print(Operator):
         
                 
         return {'FINISHED'}
-
-
-
-
 
 
 
@@ -251,6 +247,11 @@ class SmockingPattern():
         # update the stitching points ID since the V is updated
         self.get_stitching_points_vtx_id()
         
+    def get_vid_in_stitching_line(self, lid):
+        pids = find_index_in_list(self.stitching_points_line_id, lid)
+        vtxID = self.stitching_points_vtx_id[pids]
+        
+        return vtxID
         
     def get_pts_in_stitching_line(self, lid):
     
@@ -258,7 +259,10 @@ class SmockingPattern():
         pos = np.array(self.stitching_points)[pids, :]
         
         return pos, pids    
-   
+    
+    def num_stitching_lines(self):
+         
+        return int(max(self.stitching_points_line_id)) + 1
    
     
     def plot(self):
@@ -286,9 +290,12 @@ class SmockingPattern():
         for lid in range(max(self.stitching_points_line_id)+1):
             
             # cannot use the position from the V, since the mesh is translated
-            _, pids = self.get_pts_in_stitching_line(lid)
-#            print(pids)
-            vtxID = self.stitching_points_vtx_id[pids]
+#            _, pids = self.get_pts_in_stitching_line(lid)
+##            print(pids)
+#            vtxID = self.stitching_points_vtx_id[pids]
+#            
+            vtxID = self.get_vid_in_stitching_line(lid)
+            
             pos = get_vtx_pos(mesh, np.array(vtxID))
             
             # draw the stitching lines in the world coordinate
@@ -385,6 +392,61 @@ def get_vtx_pos(mesh, vids):
         p.append(get_curr_vtx_pos(mesh, vid))
     return p
 
+
+
+def write_fsp_to_obj(fsp, filepath):
+
+    with open(filepath, 'w') as f:
+        f.write("# OBJ file\n")
+        # write vertices - z-val = 0
+        for v_id in range(len(fsp.V)):
+            f.write("v %.4f %.4f %.4f\n" % (fsp.V[v_id, 0], fsp.V[v_id, 1], 0))
+            
+        # write faces
+        for f_id in range(len(fsp.F)):
+            f.write("f")
+            p = fsp.F[f_id]
+            for v_id in range(len(p)):
+                f.write(" %d" % (p[v_id] + 1))
+            f.write("\n")
+    
+        # add stiching lines to the object
+        for lid in range(fsp.num_stitching_lines()):
+            vtxID = fsp.get_vid_in_stitching_line(lid)
+            
+            for ii in range(len(vtxID)-1):
+                f.write('l ' + str(vtxID[ii]+1) + ' ' + str(vtxID[ii+1]+1) + '\n')
+                
+
+    
+    
+    
+def write_mesh_to_obj(mesh_name, save_dir, save_name):
+    mesh = bpy.data.objects[mesh_name]
+    select_one_object(mesh)
+    bpy.ops.export_scene.obj(filepath= save_dir + save_name, 
+                         check_existing=True, 
+                         filter_glob='*.obj;*.mtl', 
+                         use_selection=True, 
+                         use_animation=False, 
+                         use_mesh_modifiers=True, 
+                         use_edges=True, 
+                         use_smooth_groups=False, 
+                         use_smooth_groups_bitflags=False, 
+                         use_normals=True, 
+                         use_uvs=True, 
+                         use_materials=True, 
+                         use_triangles=False, 
+                         use_nurbs=False, 
+                         use_vertex_groups=False, 
+                         use_blen_objects=True, 
+                         group_by_object=False, 
+                         group_by_material=False, 
+                         keep_vertex_order=False, 
+                         global_scale=1.0, 
+                         path_mode='AUTO', 
+                         axis_forward='-Z', 
+                         axis_up='Y')
 
 # ---------------------BEGIN: write/read unit-smocking-pattern ------------------------
 
@@ -1053,8 +1115,7 @@ class FSP_AddMargin(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        print('not done yet:/')
-        
+
         m_top = context.scene.margin_top
         m_bottom = context.scene.margin_bottom
         m_left = context.scene.margin_left
@@ -1085,7 +1146,15 @@ class FSP_Export(Operator):
     
     def execute(self, context):
         print('not done yet:/')
+        dt = bpy.types.Scene.solver_data
         
+        save_dir = bpy.path.abspath(context.scene.path_export_fullpattern)
+        file_name = context.scene.filename_export_fullpattern + context.scene.export_format
+        
+        fsp = dt.full_smocking_pattern
+        filepath = save_dir + file_name
+        write_fsp_to_obj(fsp, filepath)
+
         return {'FINISHED'}
     
 
