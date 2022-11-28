@@ -46,8 +46,8 @@ PROPS = [
     # for full grid (full smocking pattern)
     ('num_x', bpy.props.FloatProperty(name='Xtile', default=3, min=1, max=20)),
     ('num_y', bpy.props.FloatProperty(name='Ytile', default=3, min=1, max=20)),
-    ('shift_x', bpy.props.FloatProperty(name='Xshift', default=0, min=-10, max=10)),
-    ('shift_y', bpy.props.FloatProperty(name='Yshift', default=0, min=-10, max=10)),
+    ('shift_x', bpy.props.IntProperty(name='Xshift', default=0, min=-10, max=10)),
+    ('shift_y', bpy.props.IntProperty(name='Yshift', default=0, min=-10, max=10)),
     ('type_tile', bpy.props.EnumProperty(items = [("regular", "regular", "tile in a regular grid"), ("radial", "radial", "tile in a radial grid")], name="Type", default="regular")),
     ('margin_top', bpy.props.FloatProperty(name='Top', default=0, min=0, max=10)),
     ('margin_bottom', bpy.props.FloatProperty(name='Bottom', default=0, min=0, max=10)),
@@ -107,14 +107,13 @@ class debug_print(Operator):
         dt = bpy.types.Scene.solver_data
         
         usp = dt.unit_smocking_pattern
+        fsp = dt.full_smocking_pattern
         print('--------------------------------------------------------')
         print('data stored in current scene:')
         print('--------------------------------------------------------')
-        if usp:
-            print('Unit Smocking Pattern:')
-            print('gridX: ' + str(usp.base_x) + ', gridY: ' + str(usp.base_y))        
-            print('stitching points:')
-            print(usp.stitching_points)
+        if usp and fsp:
+            usp.info()
+            fsp.info()
             
         else:
             print('Import the smokcing pattern first')
@@ -145,7 +144,7 @@ class debug_func(Operator):
         
         
         # deform the regular grid into a radial one
-        scale = 2.0*np.pi / fsp.len_x
+#        scale = 2.0*np.pi / fsp.len_x
         V = fsp.V
 #        print(V)
 
@@ -218,18 +217,11 @@ class SmockingPattern():
     def __init__(self, V, F, E,
                  stitching_points,
                  stitching_points_line_id,
-                 stitching_points_patch_id,
-                 len_x, len_y, m_top=0, m_left=0):
+                 stitching_points_patch_id):
         # the mesh for the smocking pattern
         self.V = V
         self.F = F
         self.E = E
-        
-        # for visualization
-        self.len_x = len_x
-        self.len_y = len_y
-        self.m_top = m_top
-        self.m_left = m_left
         
         # the stitching points: in 2D/3D positions
         self.stitching_points = np.array(stitching_points)
@@ -251,7 +243,13 @@ class SmockingPattern():
             vid = find_matching_rowID(self.V, self.stitching_points[ii,0:2])
             all_sp_vid.append(vid[0][0].tolist())
         self.stitching_points_vtx_id = np.array(all_sp_vid)
-        
+    
+    def update_mesh(self, V_new, F_new, E_new):
+        self.V = V_new
+        self.F = F_new
+        self.E = E_new
+        # update the stitching points ID since the V is updated
+        self.get_stitching_points_vtx_id()
         
         
     def get_pts_in_stitching_line(self, lid):
@@ -270,7 +268,7 @@ class SmockingPattern():
         mesh = bpy.data.objects['FullPattern']
         
         mesh.scale = (1, 1, 1)
-        mesh.location = (self.m_left, -self.len_y-self.m_top-2.5, 0)
+        mesh.location = (-min(self.V[:,0]), -max(self.V[:,1])-2.5, 0)
         mesh.show_axis = False
         mesh.show_wire = True
         mesh.display_type = 'WIRE'
@@ -278,7 +276,7 @@ class SmockingPattern():
         
         # add annotation to full pattern
         add_text_to_scene(body="Full Smocking Pattern", 
-                          location=(0,-2, 0), 
+                          location=(0, -2, 0), 
                           scale=(1,1,1),
                           obj_name='pattern_annotation',
                           coll_name='SmockingPattern')
@@ -289,7 +287,7 @@ class SmockingPattern():
             
             # cannot use the position from the V, since the mesh is translated
             _, pids = self.get_pts_in_stitching_line(lid)
-            print(pids)
+#            print(pids)
             vtxID = self.stitching_points_vtx_id[pids]
             pos = get_vtx_pos(mesh, np.array(vtxID))
             
@@ -301,7 +299,8 @@ class SmockingPattern():
         print('------------------------------')
         print('Full Smocking Pattern:')
         print('------------------------------')
-        print('len_x: ' + str(self.len_x) + ', len_y: ' + str(self.len_y))
+        print('No. vertices: ' + str(len(self.V)))
+        print('No. faces: ' + str(len(self.F)))
         print('No. stitching lines: ' + str(max(self.stitching_points_line_id)+1))
         print('No. unit patches: ' + str(max(self.stitching_points_patch_id)+1))
         print(self.stitching_points_patch_id)
@@ -554,6 +553,13 @@ def construct_object_from_mesh_to_scene(V, F, mesh_name, coll_name='SmockingPatt
     bpy.context.scene.collection.children[coll_name].objects.link(object)
     
 
+def show_mesh(mesh, scale=(1,1,1), location=(0,0,0)):
+    mesh.scale = scale
+    mesh.location = location
+    mesh.show_axis = False
+    mesh.show_wire = True
+    mesh.display_type = 'WIRE'
+    select_one_object(mesh)
 
 def generate_grid_for_unit_pattern(base_x, base_y, if_add_diag=False):
     # there is some but in blender subdivison
@@ -563,32 +569,28 @@ def generate_grid_for_unit_pattern(base_x, base_y, if_add_diag=False):
     F, V, _ = extract_graph_from_meshgrid(gx, gy, if_add_diag)
     construct_object_from_mesh_to_scene(V, F, 'Grid', 'UnitSmockingPattern')
     
-
     mesh = bpy.data.objects['Grid']
-    mesh.scale = (1, 1, 1)
-    mesh.show_axis = False
-    mesh.show_wire = True
-    mesh.display_type = 'WIRE'
-    select_one_object(mesh)
+    
+    show_mesh(mesh)
+    
     
     return mesh
     
 
-def generate_grid_for_full_pattern(len_x, len_y, if_add_diag=True,
-                                   m_left=0, m_right=0, m_top=0, m_bottom=0):
+def generate_tiled_grid_for_full_pattern(len_x, len_y, if_add_diag=True):
     # create the full grid with size len_x by len_y
-    gx, gy = create_grid(len_x, len_y, m_left, m_right, m_top, m_bottom)
+    gx, gy = create_grid(len_x, len_y)
     
     F, V, E = extract_graph_from_meshgrid(gx, gy, if_add_diag)
+    
     construct_object_from_mesh_to_scene(V, F, 'FullPattern', 'SmockingPattern')
     
     mesh = bpy.data.objects['FullPattern']
-    mesh.scale = (1, 1, 1)
-    mesh.location = (m_left, -len_y - m_top- 2.5, 0)
-    mesh.show_axis = False
-    mesh.show_wire = True
-    mesh.display_type = 'WIRE'
-    select_one_object(mesh)
+    
+    show_mesh(mesh, 
+              scale=(1,1,1), 
+              location=(0, -len_y - 2.5, 0))
+    
                 
     return mesh, F, V, E
     
@@ -621,6 +623,11 @@ def initialize():
     my_coll_strokes = bpy.data.collections.new('StitchingLines')
     my_coll.children.link(my_coll_strokes)
     
+    
+    # collections for the smocked graph
+    my_coll = bpy.data.collections.new('SmockedGraph')
+    bpy.context.scene.collection.children.link(my_coll)
+    
 
 # ========================================================================
 #                      Core functions for smocking pattern
@@ -637,28 +644,35 @@ def sort_edge(edges):
 
 
 
-def create_grid(num_x, num_y,
-                m_left=0, m_right=0, m_top=0, m_bottom=0):
-#        scale = max(base_x, base_y)
-#        # subdivison a bit buggy here
-#        bpy.ops.mesh.primitive_grid_add(size=scale, 
-#                                        location=(base_x/2, base_y/2,0),
-#                                        x_subdivisions=base_x + 1,
-#                                        y_subdivisions=base_y + 1) 
+def create_grid(num_x, num_y):
 
     # note num_x/num_y can be float :/
 #    xx = range(num_x+1) # [0, ..., num_x]
 #    yy = range(num_y+1) # [0, ..., num_y]    
     
+    xx = range(int(np.ceil(num_x)) + 1)
+    yy = range(int(np.ceil(num_y)) + 1)
     
-    xx = [-m_left] + list(range(int(np.floor(num_x))+1)) + [num_x] + [num_x + m_right]
-    yy = [-m_bottom] + list(range(int(np.floor(num_y))+1)) + [num_y] + [num_y + m_top]
+    gx, gy = np.meshgrid(xx, yy)
+
+    return gx, gy
+
+def add_margin_to_grid(x_ticks, y_ticks,
+                       m_left=0, m_right=0, m_top=0, m_bottom=0):
+    
+    min_x = min(x_ticks)
+    max_x = max(x_ticks)
+    min_y = min(y_ticks)
+    max_y = max(y_ticks)
+    
+    print(min_x, max_x, min_y, max_y)
+    
+    xx = [-m_left + min_x] + list(np.unique(x_ticks)) + [max_x + m_right]
+    yy = [-m_bottom + min_y] + list(np.unique(y_ticks)) + [max_y + m_top]
     
     gx, gy = np.meshgrid(np.unique(xx), np.unique(yy))
 
     return gx, gy
-
-
 
 def extract_graph_from_meshgrid(gx, gy, if_add_diag=True):
     """extract the mesh/graph from the grid"""
@@ -770,7 +784,7 @@ def tile_unit_smocking_pattern_regular(usp, num_x, num_y, shift_x, shift_y):
 
 from bpy.props import IntProperty, FloatProperty
 
-class SelectStitchingPoint(Operator):
+class USP_SelectStitchingPoint(Operator):
     """Draw a stitching line by selecting points in order"""
     bl_idname = "object.modal_operator"
     bl_label = "Simple Modal Operator"
@@ -829,7 +843,7 @@ class SelectStitchingPoint(Operator):
             return {'CANCELLED'}
 
         
-class FinishCurrentDrawing(Operator):
+class USP_FinishCurrentDrawing(Operator):
     """Finish drawing the current stitching line"""
     bl_idname = "edit.finish_drawing"
     bl_label = "Finish drawing the current stitching line"
@@ -854,7 +868,7 @@ class FinishCurrentDrawing(Operator):
         return {'FINISHED'}
 
 
-class FinishPattern(Operator):
+class USP_FinishPattern(Operator):
     """Finish creating the unit smocking pattern"""
     bl_idname = "edit.finish_creating_pattern"
     bl_label = "Finish creating the unit smocking pattern"
@@ -881,7 +895,7 @@ class FinishPattern(Operator):
 
 
 
-class SaveCurrentStitchingLine(Operator):
+class USP_SaveCurrentStitchingLine(Operator):
     """Save this stitching line"""
     bl_idname = "edit.save_current_stitching_line"
     bl_label = "Add one stiching line"
@@ -928,13 +942,6 @@ class ExportUnitPattern(Operator):
                                                  context.scene.base_x,
                                                  context.scene.base_y)
         write_usp(file_name, usp)
-#        
-#        write_usp(file_name, 
-#                  context.scene.base_x, 
-#                  context.scene.base_y, 
-#                  props.savedStitchingLines, 
-#                  bpy.data.objects['Grid'])
-                  
         
         return {'FINISHED'}
     
@@ -967,7 +974,7 @@ class ImportUnitPattern(Operator):
 #    Create Unit Grid
 # ------------------------------------------------------------------------
 
-class CreateGrid(Operator):
+class USP_CreateGrid(Operator):
     """Create a grid for specifying unit smocking pattern"""
     bl_idname = "object.create_grid"
     bl_label = "Create Grid"
@@ -1000,7 +1007,7 @@ class CreateGrid(Operator):
 # ------------------------------------------------------------------------
 #    Full Smocking Pattern by Tiling
 # ------------------------------------------------------------------------
-class FullSmockingPattern(Operator):
+class FSP_Tile(Operator):
     """Generate the full smokcing pattern by tiling the specified unit pattern"""
     bl_idname = "object.create_full_smocking_pattern"
     bl_label = "Generate Full Smocking Pattern"
@@ -1021,22 +1028,16 @@ class FullSmockingPattern(Operator):
         shift_y = context.scene.shift_y
         
         
-        m_top = context.scene.margin_top
-        m_bottom = context.scene.margin_bottom
-        m_left = context.scene.margin_left
-        m_right = context.scene.margin_right
-        
+
         
         all_sp, all_sp_lid, all_sp_pid, len_x, len_y = tile_unit_smocking_pattern_regular(usp, num_x, num_y, shift_x, shift_y)
         
-        mesh, F, V, E = generate_grid_for_full_pattern(len_x, len_y, True,
-        m_left, m_right, m_top, m_bottom)
+        mesh, F, V, E = generate_tiled_grid_for_full_pattern(len_x, len_y, True)
     
         SP = SmockingPattern(V, F, E,
                              all_sp, 
                              all_sp_lid,
-                             all_sp_pid,
-                             len_x, len_y, m_top, m_left)
+                             all_sp_pid)
         SP.plot()
         
         # save the loaded pattern to the scene
@@ -1048,14 +1049,33 @@ class FullSmockingPattern(Operator):
 
 class FSP_AddMargin(Operator):
     bl_idname = "object.full_smocking_pattern_add_margin"
-    bl_label = "Add Margin to the Smocking Pattern"
+    bl_label = "Add Margin to Current Smocking Pattern"
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
         print('not done yet:/')
         
-        return {'FINISHED'}
+        m_top = context.scene.margin_top
+        m_bottom = context.scene.margin_bottom
+        m_left = context.scene.margin_left
+        m_right = context.scene.margin_right
+        
+        
+        dt = bpy.types.Scene.solver_data
+        fsp = dt.full_smocking_pattern
+        
+        V = fsp.V
+        
+        gx, gy = add_margin_to_grid(np.unique(V[:,0]), np.unique(V[:, 1]),
+                                    m_top, m_bottom, m_left, m_right)
     
+        F, V, E = extract_graph_from_meshgrid(gx, gy, True)
+        
+        fsp.update_mesh(V, F, E)
+        fsp.plot()
+        
+        
+        return {'FINISHED'}
 
 
 class FSP_Export(Operator):
@@ -1148,7 +1168,7 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
 
         
         row = layout.row()
-        row.operator(CreateGrid.bl_idname, text="Generate Grid", icon='GRID')
+        row.operator(USP_CreateGrid.bl_idname, text="Generate Grid", icon='GRID')
 
         
         row = layout.row()
@@ -1156,14 +1176,14 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
         row = layout.row()
         
         if(not context.window_manager.drawing_started):
-            row.operator(SelectStitchingPoint.bl_idname, text="Draw", icon='GREASEPENCIL')
+            row.operator(USP_SelectStitchingPoint.bl_idname, text="Draw", icon='GREASEPENCIL')
         else:
-            row.operator(FinishCurrentDrawing.bl_idname, text="Done", icon='CHECKMARK')
+            row.operator(USP_FinishCurrentDrawing.bl_idname, text="Done", icon='CHECKMARK')
        
-        row.operator(SaveCurrentStitchingLine.bl_idname, text="Add", icon='ADD')
+        row.operator(USP_SaveCurrentStitchingLine.bl_idname, text="Add", icon='ADD')
         
         row = layout.row()
-        row.operator(FinishPattern.bl_idname, text="Finish Unit Pattern Design", icon='FUND')
+        row.operator(USP_FinishPattern.bl_idname, text="Finish Unit Pattern Design", icon='FUND')
         
          
         row = layout.row()
@@ -1235,7 +1255,7 @@ class FULLGRID_PT_tile(FullGrid_panel, bpy.types.Panel):
         
         row = layout.row()
         row = layout.row()
-        row.operator(FullSmockingPattern.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
+        row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
 
 
 
@@ -1245,9 +1265,13 @@ class FULLGRID_PT_edit_pattern(FullGrid_panel, bpy.types.Panel):
     
     def draw(self, context):
         layout = self.layout
+        layout.label(text= "Delete Stitching Lines")
         row = layout.row()
-        row.operator(FSP_DeleteStitchingLines_start.bl_idname, text="Delete Existing Stitching Lines", icon="CANCEL")
+        row.operator(FSP_DeleteStitchingLines_start.bl_idname, text="Delete", icon="PANEL_CLOSE")
+        row.operator(FSP_DeleteStitchingLines_done.bl_idname, text="Done", icon="CHECKMARK")
         
+        layout.label(text= "Add New Stitching Lines")
+        row = layout.row()
         
         
 
@@ -1316,18 +1340,18 @@ wm.drawing_started = bpy.props.BoolProperty(default=False)
 
 
 _classes = [
-    CreateGrid,
-    SaveCurrentStitchingLine,
-    SelectStitchingPoint,
-    FinishCurrentDrawing,
-    FinishPattern,
+    USP_CreateGrid,
+    USP_SaveCurrentStitchingLine,
+    USP_SelectStitchingPoint,
+    USP_FinishCurrentDrawing,
+    USP_FinishPattern,
     
     debug_clear,
     debug_print,
     debug_func,
 #    UnitSmockingPattern,
     
-    FullSmockingPattern,
+    FSP_Tile,
     FSP_AddMargin,
     FSP_Export,
     FSP_DeleteStitchingLines_start,
@@ -1380,6 +1404,17 @@ if __name__ == "__main__":
 # ========================================================================
 #                         as useless as jing
 # ========================================================================
+# build-in subdivision
+#        scale = max(base_x, base_y)
+#        # subdivison a bit buggy here
+#        bpy.ops.mesh.primitive_grid_add(size=scale, 
+#                                        location=(base_x/2, base_y/2,0),
+#                                        x_subdivisions=base_x + 1,
+#                                        y_subdivisions=base_y + 1) 
+
+
+
+
 
 
 # TODO: some bug here - cannot click start twice :/
@@ -1460,3 +1495,36 @@ if __name__ == "__main__":
 #        
 #            
 #    file.close()
+
+
+
+# old code for creating grid
+
+#if (isinstance(num_x, int) or isinstance(num_x, float)) and (isinstance(num_y, int) or isinstance(num_y, float)):
+#        min_x = 0
+#        max_x = num_x
+#        
+#        min_y = 0
+#        max_y = num_y
+#    elif isinstance(num_x, list) and isinstance(num_y, list):
+#        if len(num_x) == 2 and len(num_y) == 2:
+#            min_x = num_x[0]
+#            max_x = num_x[1]
+#            
+#            min_y = num_y[0]
+#            max_y = num_y[1]
+#        else:
+#            error('not suppored input for now:/')        
+#            
+#    else:
+#        error('not suppored input for now:/')        
+#    
+#    # both min/max_x/y can be float, need to be careful
+#    # we assume the stitching points have the integer coordinates
+#    # the float part comes from stupid shift and margin :/
+#        
+#    range_x = range(int(np.ceil(min_x)), int(np.floor(max_x))+1)
+#    range_y = range(int(np.ceil(min_y)), int(np.floor(max_y))+1)    
+#    
+#    xx = [-m_left + min_x, min_x] + list(range_x) + [max_x, max_x + m_right]
+#    yy = [-m_bottom + min_y, min_y] + list(range_y) + [max_y, max_y + m_top]
