@@ -75,16 +75,18 @@ class StitchingLinesProp():
     colTmp = col_yellow
 
 
-# data for optimization
 
+# data for optimization
 class SolverData():
     unit_smocking_pattern = []
     full_smocking_pattern = []
     smocked_graph = []
     embeded_graph = []
-    smocking_design = []    
-    
+    smocking_design = []
 
+    # temporary data
+    tmp_fsp1 = []
+    tmp_fsp2 = []
 # ========================================================================
 #                         classes for the solver
 # ========================================================================
@@ -125,86 +127,6 @@ class debug_print(Operator):
 
 
 
-# def write_fsp_to_obj(fsp, filepath):
-
-#     with open(filepath, 'w') as f:
-#         f.write("# OBJ file\n")
-#         # write vertices - z-val = 0
-#         for v_id in range(len(fsp.V)):
-#             f.write("v %.4f %.4f %.4f\n" % (fsp.V[v_id, 0], fsp.V[v_id, 1], 0))
-            
-#         # write faces
-#         for f_id in range(len(fsp.F)):
-#             f.write("f")
-#             p = fsp.F[f_id]
-#             for v_id in range(len(p)):
-#                 f.write(" %d" % (p[v_id] + 1))
-#             f.write("\n")
-    
-#         # add stiching lines to the object
-#         for lid in range(fsp.num_stitching_lines()):
-#             vtxID = fsp.get_vid_in_stitching_line(lid)
-            
-#             for ii in range(len(vtxID)-1):
-#                 f.write('l ' + str(vtxID[ii]+1) + ' ' + str(vtxID[ii+1]+1) + '\n')
-
-
-
-def read_obj_to_fsp(file_name):       
-    V, F, E, all_sp_lid, all_sp_vid = [], [], [], [], []
-
-    file = open(file_name, 'r')
-    Lines = file.readlines()
-    line_end = None
-    lid = -1
-
-    for line in Lines:
-        elems = line.split()
-        if elems:
-            if elems[0] == "v":
-                vtx = []
-                for ii in range(1, len(elems)):
-                    vtx.append(float(elems[ii]))
-                V.append(vtx)
-
-            elif elems[0] == "f":
-                face = []
-                for jj in range(1, len(elems)):
-                    face.append(int(elems[jj]) - 1)
-                F.append(np.array(face))
-            elif elems[0] == "e":
-                edge = []
-                for kk in range(1, len(elems)):
-                    edge.append(int(elems[kk]) - 1)
-                E.append(edge)
-
-            elif elems[0] == "l":
-                if int(elems[1]) != line_end:
-                    lid += 1 # not the same stitching line
-
-                    for ii in range(2): # each line has two vtx
-                        all_sp_vid.append(int(elems[ii+1]) - 1)
-                        all_sp_lid.append(lid)                       
-
-                else: # same stitching line: only same the second point
-                    all_sp_vid.append(int(elems[2]) - 1)
-                    all_sp_lid.append(lid)
-
-                # update the line_end    
-                line_end = int(elems[2]) 
-
-
-    file.close()
-
-    E = np.array(E)
-    V = np.array(V)
-    all_sp = V[all_sp_vid]
-
-    fsp = SmockingPattern(V, F, E, all_sp, all_sp_lid, None, all_sp_vid)
-
-    return fsp
-
-
 class debug_func(Operator):
     bl_idname = "object.debug_func"
     bl_label = "function to test"
@@ -220,90 +142,8 @@ class debug_func(Operator):
         # load the exiting smocking pattern to my_coll
         file_name = context.scene.file_import_p1
         fsp = read_obj_to_fsp(file_name)
-        fsp.plot()
-        # file = open(file_name, 'r')
-        # Lines = file.readlines()
-        
-        # V = []
-        # F = []
-        # E = []
-        # all_sl = [] # the stitching line (vtx ID)
-        # all_sp = [] # all stitching points (positions)
-        # all_sp_lid = [] # the stitching lineID of each point
-        # all_sp_vid = []
-        
+        fsp.plot(location=[-5,-5])
 
-        # line_end = None
-        # lid = -1
-
-        # for line in Lines:
-        #     elems = line.split()
-        #     if elems:
-        #         if elems[0] == "v":
-        #             vtx = []
-        #             for ii in range(1, len(elems)):
-        #                 vtx.append(float(elems[ii]))
-        #             V.append(vtx)
-
-        #         elif elems[0] == "f":
-        #             face = []
-        #             for jj in range(1, len(elems)):
-        #                 face.append(int(elems[jj]) - 1)
-        #             F.append(np.array(face))
-        #         elif elems[0] == "e":
-        #             edge = []
-        #             for kk in range(1, len(elems)):
-        #                 edge.append(int(elems[kk]) - 1)
-        #             E.append(edge)
-
-        #         elif elems[0] == "l":
-        #             if int(elems[1]) != line_end:
-        #                 lid += 1 # not the same stitching line
-
-        #                 for ii in range(2): # each line has two vtx
-        #                     all_sp_vid.append(int(elems[ii+1]) - 1)
-        #                     all_sp_lid.append(lid)                       
-
-        #             else: # same stitching line: only same the second point
-        #                 all_sp_vid.append(int(elems[2]) -1 )
-        #                 all_sp_lid.append(lid)
-
-        #             # update the line_end    
-        #             line_end = int(elems[2]) 
-
-
-
-        # E = np.array(E)
-        # V = np.array(V)
-        # file.close()
-        # print(V)
-        # print(F)
-        # print(all_sp_vid)
-        # print(all_sp_lid)
-
-        # all_sp = V[all_sp_vid]
-        # print(all_sp)
-
-        # fsp = SmockingPattern(V, F, E, all_sp, all_sp_lid)
-        # fsp.plot()
-                    
-#         props = bpy.types.Scene.sl_props
-#         dt = bpy.types.Scene.solver_data
-#         usp = dt.unit_smocking_pattern
-#         fsp = dt.full_smocking_pattern
-       
-#         usp.info()
-#         fsp.info()
-# #       
-
-#         # deform the regular grid into a radial one
-# #        scale = 2.0*np.pi / fsp.len_x
-#         V = fsp.V
-#         print(V)
-#         print(fsp.F)
-
-        # create new grid 
-        
 
         return {'FINISHED'}
 
@@ -366,7 +206,11 @@ class SmockingPattern():
                  stitching_points,
                  stitching_points_line_id,
                  stitching_points_patch_id=None,
-                 stitching_points_vtx_id=None):
+                 stitching_points_vtx_id=None,
+                 pattern_name = "FllPattern", 
+                 coll_name='SmockingPattern',
+                 stroke_coll_name = "StitchingLines",
+                 annotation_text="Full Smocking Pattern"):
         # the mesh for the smocking pattern
         self.V = V # can be 2D or 3D vtx positions
         self.F = F
@@ -391,7 +235,14 @@ class SmockingPattern():
             self.stitching_points_vtx_id = np.array(stitching_points_vtx_id)
         else:
             self.get_stitching_points_vtx_id()
-    
+        
+        self.pattern_name = pattern_name
+        self.annotation_text = annotation_text
+        self.coll_name = coll_name
+        self.stroke_coll_name = stroke_coll_name
+
+
+
     def get_stitching_points_vtx_id(self):
         all_sp_vid = []
         for ii in range(len(self.stitching_points)):
@@ -432,29 +283,40 @@ class SmockingPattern():
          
         return int(max(self.stitching_points_line_id)) + 1
    
+    def return_pattern_width(self):
+        return max(self.V[:, 0]) - min(self.V[:, 0])
+
+    def return_pattern_height(self):
+        return max(self.V[:, 1]) - min(self.V[:, 1])
     
-    def plot(self):
-        clean_objects_in_collection('SmockingPattern')
+
+
+
+    def plot(self, location=(0,0)):
         
-        construct_object_from_mesh_to_scene(self.V, self.F, 'FullPattern', 'SmockingPattern')
-        mesh = bpy.data.objects['FullPattern']
+        clean_objects_in_collection(self.coll_name)
+        
+        construct_object_from_mesh_to_scene(self.V, self.F, self.pattern_name, self.coll_name)
+
+        mesh = bpy.data.objects[self.pattern_name]
         
         mesh.scale = (1, 1, 1)
-        mesh.location = (-min(self.V[:,0]), -max(self.V[:,1])-2.5, 0)
+        mesh.location = (location[0]-min(self.V[:,0]), location[1]-max(self.V[:,1])-2.5, 0)
         mesh.show_axis = False
         mesh.show_wire = True
         mesh.display_type = 'WIRE'
         select_one_object(mesh)
         
         # add annotation to full pattern
-        add_text_to_scene(body="Full Smocking Pattern", 
-                          location=(0, -2, 0), 
+        add_text_to_scene(body=self.annotation_text, 
+                          location=(location[0], location[1]-2, 0), 
                           scale=(1,1,1),
-                          obj_name='pattern_annotation',
-                          coll_name='SmockingPattern')
+                          obj_name=self.pattern_name+"_annotation",
+                          coll_name=self.coll_name)
        
-        clean_objects_in_collection('StitchingLines')       
         # visualize all stitching lines
+        clean_objects_in_collection(self.stroke_coll_name)
+
         for lid in range(max(self.stitching_points_line_id)+1):
             
             # cannot use the position from the V, since the mesh is translated
@@ -467,7 +329,7 @@ class SmockingPattern():
             pos = get_vtx_pos(mesh, np.array(vtxID))
             
             # draw the stitching lines in the world coordinate
-            draw_stitching_line(pos, col_blue, "stitching_line_" + str(lid), strokeSize, 'StitchingLines')
+            draw_stitching_line(pos, col_blue, "stitching_line_" + str(lid), strokeSize, self.stroke_coll_name)
 #            add_stroke_to_gpencil(pos, col_blue, "FSP_StitchingLines", strokeSize)
             
             
@@ -506,11 +368,29 @@ def delete_all():
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete()
     
-    
+
+
 def clean_objects() -> None:
     for item in bpy.data.objects:
         bpy.data.objects.remove(item)
-        
+
+
+def delete_one_collection(coll_name):
+    for coll in bpy.data.collections:
+        if coll_name in coll.name:
+            for child in coll.children:
+                bpy.data.collections.remove(child)
+                clean_objects_in_collection(coll.name)
+
+
+
+
+def clean_one_object(obj_name):
+    for item in bpy.data.objects:
+        if item.name  == obj_name:
+            bpy.data.objects.remove(item)
+
+
 
 def select_one_object(obj):
     bpy.ops.object.select_all(action='DESELECT')
@@ -598,6 +478,65 @@ def write_fsp_to_obj(fsp, filepath):
                 f.write('l %d %d\n' % (vtxID[ii] + 1 , vtxID[ii+1] + 1))
                 
 
+def read_obj_to_fsp(file_name, 
+                    pattern_name = "FllPattern", 
+                    coll_name='SmockingPattern',
+                    stroke_coll_name = "StitchingLines",
+                    annotation_text="Full Smocking Pattern"):       
+    V, F, E, all_sp_lid, all_sp_vid = [], [], [], [], []
+
+    file = open(file_name, 'r')
+    Lines = file.readlines()
+    line_end = None
+    lid = -1
+
+    for line in Lines:
+        elems = line.split()
+        if elems:
+            if elems[0] == "v":
+                vtx = []
+                for ii in range(1, len(elems)):
+                    vtx.append(float(elems[ii]))
+                V.append(vtx)
+
+            elif elems[0] == "f":
+                face = []
+                for jj in range(1, len(elems)):
+                    face.append(int(elems[jj]) - 1)
+                F.append(np.array(face))
+            elif elems[0] == "e":
+                edge = []
+                for kk in range(1, len(elems)):
+                    edge.append(int(elems[kk]) - 1)
+                E.append(edge)
+
+            elif elems[0] == "l":
+                if int(elems[1]) != line_end:
+                    lid += 1 # not the same stitching line
+
+                    for ii in range(2): # each line has two vtx
+                        all_sp_vid.append(int(elems[ii+1]) - 1)
+                        all_sp_lid.append(lid)                       
+
+                else: # same stitching line: only same the second point
+                    all_sp_vid.append(int(elems[2]) - 1)
+                    all_sp_lid.append(lid)
+
+                # update the line_end    
+                line_end = int(elems[2]) 
+
+
+    file.close()
+
+    E = np.array(E)
+    V = np.array(V)
+    all_sp = V[all_sp_vid]
+
+    fsp = SmockingPattern(V, F, E, 
+                          all_sp, all_sp_lid, None, all_sp_vid,
+                          pattern_name, coll_name, stroke_coll_name, annotation_text)
+
+    return fsp
     
     
     
@@ -1593,13 +1532,67 @@ class FSP_EditMesh_done(Operator):
 
 
 
+
+def clean_tmp_collections():
+    
+    if_tmp_coll_exist = False
+    for coll in bpy.data.collections:
+        if "TmpCollection" in coll.name:
+            if_tmp_coll_exist = True
+
+    if if_tmp_coll_exist:
+        # remove all the existing objects
+        clean_objects_in_collection('TmpCollection1')
+        clean_objects_in_collection('TmpCollection2')
+        clean_objects_in_collection('TmpStitchingLines1')
+        clean_objects_in_collection('TmpStitchingLines2')
+    else:
+        # create new collections
+        for cid in range(1,3): 
+            coll_name = "TmpCollection" + str(cid)
+            stroke_coll_name = "TmpStitchingLines" + str(cid)
+            my_coll = bpy.data.collections.new(coll_name)
+            bpy.context.scene.collection.children.link(my_coll)
+
+            my_coll_strokes = bpy.data.collections.new(stroke_coll_name)
+            my_coll.children.link(my_coll_strokes)
+            
+        
+
+
+  
+
 class FSP_CombinePatterns_load_first(Operator):
     bl_idname = "object.fsp_combine_patterns_load_first"
     bl_label = "Load the first pattern"
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        print('not done yet :/')
+        coll_name = "TmpCollection1"
+        stroke_coll_name = "TmpStitchingLines1"
+        pattern_name = 'Pattern01'
+        annotation_text = "Pattern 01"
+        
+        clean_tmp_collections()
+    
+        # load the exiting smocking pattern to my_coll
+        file_name = context.scene.file_import_p1
+        
+        fsp = read_obj_to_fsp(file_name, pattern_name, coll_name, stroke_coll_name, annotation_text)
+
+        dt = bpy.types.Scene.solver_data
+        dt.tmp_fsp1 = fsp # save the data to scene
+
+        tmp_fsp1_loc = [-fsp.return_pattern_width() - 2, fsp.return_pattern_height()+1]
+
+        if dt.tmp_fsp2 != []:
+            minx = -max(dt.tmp_fsp2.return_pattern_width(), fsp.return_pattern_width())-2
+            tmp_fsp1_loc = [minx, fsp.return_pattern_height()+1]
+            tmp_fsp2_loc = [minx, -2.5]
+            dt.tmp_fsp2.plot(tmp_fsp2_loc)
+
+        fsp.plot(tmp_fsp1_loc)
+
         return {'FINISHED'}
 
 
@@ -1612,7 +1605,31 @@ class FSP_CombinePatterns_load_second(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        print('not done yet :/')
+        coll_name = "TmpCollection2"
+        stroke_coll_name = "TmpStitchingLines2"
+        pattern_name = 'Pattern02'
+        annotation_text = "Pattern 02"
+        
+        clean_tmp_collections()
+
+    
+        # load the exiting smocking pattern to my_coll
+        file_name = context.scene.file_import_p2
+        
+        fsp = read_obj_to_fsp(file_name, pattern_name, coll_name, stroke_coll_name, annotation_text)
+
+        dt = bpy.types.Scene.solver_data
+        dt.tmp_fsp2 = fsp # save the data to scene
+        tmp_fsp2_loc = [-fsp.return_pattern_width() - 2,  -2.5]
+
+        if dt.tmp_fsp1 != []:
+            minx = -max(dt.tmp_fsp1.return_pattern_width(), fsp.return_pattern_width())-2
+            tmp_fsp1_loc = [minx, dt.tmp_fsp1.return_pattern_height()+1]
+            tmp_fsp2_loc = [minx, -2.5]
+            dt.tmp_fsp1.plot(tmp_fsp1_loc)
+
+        fsp.plot(tmp_fsp2_loc)
+
         return {'FINISHED'}
 
 
