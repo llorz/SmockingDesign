@@ -31,7 +31,7 @@ col_yellow = (254/255.0, 228/255.0, 64/255.0)
 
 STROKE_SIZE = 10 # to plot the stiching lines
 LAYOUT_Y_SHIFT = 3
-LAYOUT_X_SHIFT = 5
+LAYOUT_X_SHIFT = 2
 
 # global variables from user input
 
@@ -61,8 +61,8 @@ PROPS = [
     ('file_import_p1', bpy.props.StringProperty(subtype='FILE_PATH', name='P1')),
     ('file_import_p2', bpy.props.StringProperty(subtype='FILE_PATH', name='P2')),
     ('combine_direction', bpy.props.EnumProperty(items = [("x", "x", "x"), ("y", "y", "y")], name="Axis", default="x")),
-    ('combine_space', bpy.props.FloatProperty(name='space', default=2, min=1, max=20))
-        ]
+    ('combine_space', bpy.props.IntProperty(name='space', default=2, min=1, max=20)),
+    ('combine_shift', bpy.props.IntProperty(name='shift', default=2, min=-20, max=20))]
     
     
 # to extract the stitching lines from user selection
@@ -89,6 +89,7 @@ class SolverData():
     # temporary data
     tmp_fsp1 = []
     tmp_fsp2 = []
+    combine_fsp1_fsp2 = []
 # ========================================================================
 #                         classes for the solver
 # ========================================================================
@@ -100,7 +101,17 @@ class debug_clear(Operator):
     
     def execute(self, context):
         initialize()
-            
+        props = bpy.types.Scene.sl_props
+        dt = bpy.types.Scene.solver_data
+        dt.unit_smocking_pattern = []
+        dt.full_smocking_pattern = []
+        dt.smocked_graph = []
+        dt.embeded_graph = []
+        dt.smocked_graph = []
+        dt.tmp_fsp1 = []
+        dt.tmp_fsp2 = []
+        dt.combine_fsp1_fsp2 = []
+
         return {'FINISHED'}
 
 class debug_print(Operator):
@@ -1541,7 +1552,7 @@ class FSP_EditMesh_done(Operator):
 
 
 def clean_tmp_collections():
-    
+
     if_tmp_coll_exist = False
     for coll in bpy.data.collections:
         if "TmpCollection" in coll.name:
@@ -1549,7 +1560,8 @@ def clean_tmp_collections():
 
     if if_tmp_coll_exist:
         # remove all the existing objects
-        for c in ['TmpCollection1', 'TmpCollection2', 'TmpStitchingLines1', 'TmpStitchingLines2']:
+        for c in ['TmpCollection1', 'TmpCollection2', 
+                  'TmpStitchingLines1', 'TmpStitchingLines2']:
             clean_objects_in_collection(c)
 
     else:
@@ -1563,15 +1575,37 @@ def clean_tmp_collections():
             my_coll_strokes = bpy.data.collections.new(stroke_coll_name)
             my_coll.children.link(my_coll_strokes)
             
-        
+
+def clean_combined_collections():
+    
+    if_com_coll_exist = False
+    for coll in bpy.data.collections:
+        if "CombineCollection" in coll.name:
+            if_com_coll_exist = True
+
+    if if_com_coll_exist:
+        # remove all the existing objects
+        for c in ['CombineCollection', 'CombineStitchingLines']:
+            clean_objects_in_collection(c)
+    else:
+        coll_name = 'CombineCollection' 
+        stroke_coll_name = 'CombineStitchingLines'
+        my_coll = bpy.data.collections.new(coll_name)
+        bpy.context.scene.collection.children.link(my_coll)
+
+        my_coll_strokes = bpy.data.collections.new(stroke_coll_name)
+        my_coll.children.link(my_coll_strokes)
+            
 
 def return_tmp_pattern_location():
     dt = bpy.types.Scene.solver_data
     fsp1 = dt.tmp_fsp1  
     fsp2 = dt.tmp_fsp2
-    
+    fsp3 = dt.combine_fsp1_fsp2
+
     fsp1_loc = [0, 0]
     fsp2_loc = [0, 0]
+    fsp3_loc = [0, 0]
 
     if fsp1 != []:
         fsp1_loc[0] = -fsp1.return_pattern_width() - LAYOUT_X_SHIFT 
@@ -1581,9 +1615,15 @@ def return_tmp_pattern_location():
         fsp2_loc[0] = -fsp2.return_pattern_width() - LAYOUT_X_SHIFT 
         fsp2_loc[1] = 0
 
-    fsp1_loc[0], fsp2_loc[0] = min(fsp1_loc[0], fsp2_loc[0]), min(fsp1_loc[0], fsp2_loc[0])
+    if fsp3 != []: # the combined pattern
+        fsp3_loc[0] = -fsp3.return_pattern_width() - LAYOUT_X_SHIFT
+        fsp3_loc[1] = - fsp2.return_pattern_height() - LAYOUT_Y_SHIFT
 
-    return fsp1_loc, fsp2_loc
+    a = min(fsp1_loc[0], fsp2_loc[0], fsp3_loc[0])
+
+    fsp1_loc[0], fsp2_loc[0], fsp3_loc[0] = a, a, a
+
+    return fsp1_loc, fsp2_loc, fsp3_loc
 
 
 class FSP_CombinePatterns_load_first(Operator):
@@ -1598,7 +1638,9 @@ class FSP_CombinePatterns_load_first(Operator):
         annotation_text = "Pattern 01"
         
         clean_tmp_collections()
-    
+        clean_combined_collections()
+
+
         # load the exiting smocking pattern to my_coll
         file_name = context.scene.file_import_p1
         
@@ -1607,7 +1649,9 @@ class FSP_CombinePatterns_load_first(Operator):
         dt = bpy.types.Scene.solver_data
         dt.tmp_fsp1 = fsp # save the data to scene
 
-        fsp1_loc, fsp2_loc = return_tmp_pattern_location()
+        dt.combine_fsp1_fsp2 = []
+
+        fsp1_loc, fsp2_loc, _ = return_tmp_pattern_location()
         
         if dt.tmp_fsp2 != []:
             dt.tmp_fsp2.plot(fsp2_loc)
@@ -1632,7 +1676,7 @@ class FSP_CombinePatterns_load_second(Operator):
         annotation_text = "Pattern 02"
         
         clean_tmp_collections()
-
+        clean_combined_collections()
     
         # load the exiting smocking pattern to my_coll
         file_name = context.scene.file_import_p2
@@ -1642,7 +1686,9 @@ class FSP_CombinePatterns_load_second(Operator):
         dt = bpy.types.Scene.solver_data
         dt.tmp_fsp2 = fsp # save the data to scene
 
-        fsp1_loc, fsp2_loc = return_tmp_pattern_location()
+        dt.combine_fsp1_fsp2 = []
+
+        fsp1_loc, fsp2_loc, _ = return_tmp_pattern_location()
 
         if dt.tmp_fsp1 != []:
             dt.tmp_fsp1.plot(fsp1_loc)
@@ -1664,10 +1710,13 @@ class FSP_CombinePatterns_assign_to_first(Operator):
         annotation_text = "Pattern 01"
         
         clean_tmp_collections()
-    
+        clean_combined_collections()
 
         dt = bpy.types.Scene.solver_data
         fsp = dt.full_smocking_pattern
+
+        dt.combine_fsp1_fsp2 = []
+
         if fsp == []:
             print('ERROR: there is no full smocking pattern in the scene')
         else:
@@ -1680,7 +1729,7 @@ class FSP_CombinePatterns_assign_to_first(Operator):
                  coll_name,
                  stroke_coll_name,
                  annotation_text)
-            fsp1_loc, fsp2_loc = return_tmp_pattern_location()
+            fsp1_loc, fsp2_loc, _ = return_tmp_pattern_location()
 
             if dt.tmp_fsp2 != []:
                 dt.tmp_fsp2.plot(fsp2_loc)
@@ -1702,10 +1751,13 @@ class FSP_CombinePatterns_assign_to_second(Operator):
         annotation_text = "Pattern 02"
         
         clean_tmp_collections()
-    
+        clean_combined_collections()
 
         dt = bpy.types.Scene.solver_data
         fsp = dt.full_smocking_pattern
+
+        dt.combine_fsp1_fsp2 = []
+
         if fsp == []:
             print('ERROR: there is no full smocking pattern in the scene')
         else:
@@ -1718,7 +1770,8 @@ class FSP_CombinePatterns_assign_to_second(Operator):
                  coll_name,
                  stroke_coll_name,
                  annotation_text)
-            fsp1_loc, fsp2_loc = return_tmp_pattern_location()
+
+            fsp1_loc, fsp2_loc, _ = return_tmp_pattern_location()
 
             if dt.tmp_fsp1 != []:
                 dt.tmp_fsp1.plot(fsp1_loc)
@@ -1736,6 +1789,70 @@ class FSP_CombinePatterns(Operator):
     
     def execute(self, context):
         print('not done yet :/')
+        
+        clean_combined_collections()
+
+        dt = bpy.types.Scene.solver_data
+        fsp1 = dt.tmp_fsp1
+        fsp2 = dt.tmp_fsp2
+
+        if fsp1 == [] or fsp2 == []:
+            print("Error: Load or create two patterns first!")
+        else:
+            axis = context.scene.combine_direction
+            dist = context.scene.combine_space
+            shift = context.scene.combine_shift
+            if axis == 'x':
+                # [P1, P2]
+                p2_trans = [fsp1.return_pattern_width() + dist, shift, 0]
+            elif axis == 'y':
+                # [P1
+                #  P2]
+                p2_trans = [shift, fsp1.return_pattern_height() + dist, 0]
+
+            # we translate the vtx and stitching points in P2 by p2_trans
+            # then merge them into a singe pattern
+            
+            # TODO: need to fix the dimension of V and stitching points
+            all_sp1 = fsp1.stitching_points[:,0:2]
+            all_sp2 = fsp2.stitching_points[:,0:2] + p2_trans[0:2]
+        
+            
+            all_sp = np.concatenate((all_sp1, all_sp2))
+            all_sp_lid = np.concatenate( (fsp1.stitching_points_line_id, fsp2.stitching_points_line_id + fsp1.num_stitching_lines() ) )
+            
+            all_V = np.concatenate( (fsp1.V, fsp2.V + p2_trans) )
+
+            gx, gy = np.meshgrid(np.unique(all_V[:,0]), np.unique(all_V[:,1]))
+    
+            F, V, E = extract_graph_from_meshgrid(gx, gy, True)
+            
+            # create the combined pattern
+            fsp = SmockingPattern(V, F, E,
+                 all_sp,
+                 all_sp_lid,
+                 [],
+                 [],
+                 'combined_P1_P2', 
+                 'CombineCollection',
+                 'CombineStitchingLines',
+                 'P1 + P2 combined')
+            
+            # print(all_sp)
+            # print(all_sp_lid) 
+
+            # save the combined data to scene
+            dt.combine_fsp1_fsp2 = fsp
+
+
+            # udpate the patterns
+            fsp1_loc, fsp2_loc, fsp3_loc = return_tmp_pattern_location()
+
+            dt.tmp_fsp1.plot(fsp1_loc)
+            dt.tmp_fsp2.plot(fsp2_loc)
+            dt.combine_fsp1_fsp2.plot(fsp3_loc)
+
+
         return {'FINISHED'}
 
 
@@ -1827,6 +1944,9 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
         
                  
 
+
+
+
 class UNITGRID_PT_load(UnitGrid_panel, bpy.types.Panel):
     bl_parent_id = 'SD_PT_unit_grid_main'
     bl_label = "Load Existing Pattern"
@@ -1841,6 +1961,9 @@ class UNITGRID_PT_load(UnitGrid_panel, bpy.types.Panel):
         row.operator(ImportUnitPattern.bl_idname, text="Import", icon='IMPORT')
 
 
+
+
+
 class FullGrid_panel():
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -1848,6 +1971,8 @@ class FullGrid_panel():
     bl_options ={"HEADER_LAYOUT_EXPAND"}
      
     
+
+
 
 class FULLGRID_PT_main(FullGrid_panel, bpy.types.Panel):
     bl_label = "Full Smocking Pattern"
@@ -1917,9 +2042,12 @@ class FULLGRID_PT_combine_patterns(FullGrid_panel, bpy.types.Panel):
         row = layout.row()
         row.prop(context.scene, 'combine_direction')
         row.prop(context.scene, 'combine_space')
+        row.prop(context.scene, 'combine_shift')
+
+
         
         row = layout.row()
-        row.operator(FSP_CombinePatterns.bl_idname, text="Combined Two Patterns", icon="NODE_COMPOSITING")
+        row.operator(FSP_CombinePatterns.bl_idname, text="Combined P1 and P2", icon="NODE_COMPOSITING")
 
 
 
