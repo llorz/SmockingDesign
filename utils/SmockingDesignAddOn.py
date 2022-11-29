@@ -261,8 +261,6 @@ class SmockingPattern():
     def get_stitching_points_vtx_id(self):
         all_sp_vid = []
         for ii in range(len(self.stitching_points)):
-            print(self.V)
-            print(self.stitching_points[ii,:])
             # vid = find_matching_rowID(self.V, self.stitching_points[ii,0:len(self.V[0])])
             vid = find_matching_rowID(self.V, self.stitching_points[ii,:])
             
