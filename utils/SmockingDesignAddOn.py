@@ -231,6 +231,8 @@ class SmockingPattern():
         
         # the stitching points: in 2D/3D positions
         self.stitching_points = np.array(stitching_points)
+        self.stitching_points = self.stitching_points[:,0:len(self.V[0])]
+
         # the lineID of the stitching points
         # the points with the same line ID will be sew together
         self.stitching_points_line_id = np.array(stitching_points_line_id)
@@ -259,7 +261,10 @@ class SmockingPattern():
     def get_stitching_points_vtx_id(self):
         all_sp_vid = []
         for ii in range(len(self.stitching_points)):
-            vid = find_matching_rowID(self.V, self.stitching_points[ii,0:len(self.V[0])])
+            print(self.V)
+            print(self.stitching_points[ii,:])
+            # vid = find_matching_rowID(self.V, self.stitching_points[ii,0:len(self.V[0])])
+            vid = find_matching_rowID(self.V, self.stitching_points[ii,:])
             
 #            print(self.stitching_points[ii, 0:2])
             
@@ -545,7 +550,7 @@ def read_obj_to_fsp(file_name,
     V = np.array(V)
     all_sp = V[all_sp_vid]
 
-    fsp = SmockingPattern(V, F, E, 
+    fsp = SmockingPattern(V[:,0:2], F, E, 
                           all_sp, all_sp_lid, [], all_sp_vid,
                           pattern_name, coll_name, stroke_coll_name, annotation_text)
 
@@ -1035,6 +1040,45 @@ def tile_unit_smocking_pattern_regular(usp, num_x, num_y, shift_x, shift_y):
 
 
 
+def combine_two_smocking_patterns(fsp1, fsp2, axis, dist, shift):
+
+    if axis == 'x':
+        # [P1, P2]
+        p2_trans = [fsp1.return_pattern_width() + dist, shift]
+    elif axis == 'y':
+        # [P1
+        #  P2]
+        p2_trans = [shift, fsp1.return_pattern_height() + dist]
+
+    # we translate the vtx and stitching points in P2 by p2_trans
+    # then merge them into a singe pattern
+    
+    # TODO: need to fix the dimension of V and stitching points
+    all_sp1 = fsp1.stitching_points[:,0:2]
+    all_sp2 = fsp2.stitching_points[:,0:2] + p2_trans[0:2]
+
+    
+    all_sp = np.concatenate((all_sp1, all_sp2))
+    all_sp_lid = np.concatenate( (fsp1.stitching_points_line_id, fsp2.stitching_points_line_id + fsp1.num_stitching_lines() ) )
+
+    all_V = np.concatenate( (fsp1.V, fsp2.V + p2_trans) )
+
+    gx, gy = np.meshgrid(np.unique(all_V[:,0]), np.unique(all_V[:,1]))
+
+    F, V, E = extract_graph_from_meshgrid(gx, gy, True)
+    
+    # create the combined pattern
+    fsp = SmockingPattern(V, F, E,
+         all_sp,
+         all_sp_lid,
+         [],
+         [],
+         'combined_P1_P2', 
+         'CombineCollection',
+         'CombineStitchingLines',
+         'P1 + P2 combined')
+
+    return fsp    
 
 # ========================================================================
 #                          Functions for UIs
@@ -1782,13 +1826,16 @@ class FSP_CombinePatterns_assign_to_second(Operator):
 
 
 
+
+
+
+
 class FSP_CombinePatterns(Operator):
     bl_idname = "object.fsp_combine_patterns"
-    bl_label = "Combined two patterns"
+    bl_label = "Combine two patterns"
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        print('not done yet :/')
         
         clean_combined_collections()
 
@@ -1802,45 +1849,9 @@ class FSP_CombinePatterns(Operator):
             axis = context.scene.combine_direction
             dist = context.scene.combine_space
             shift = context.scene.combine_shift
-            if axis == 'x':
-                # [P1, P2]
-                p2_trans = [fsp1.return_pattern_width() + dist, shift, 0]
-            elif axis == 'y':
-                # [P1
-                #  P2]
-                p2_trans = [shift, fsp1.return_pattern_height() + dist, 0]
-
-            # we translate the vtx and stitching points in P2 by p2_trans
-            # then merge them into a singe pattern
             
-            # TODO: need to fix the dimension of V and stitching points
-            all_sp1 = fsp1.stitching_points[:,0:2]
-            all_sp2 = fsp2.stitching_points[:,0:2] + p2_trans[0:2]
+            fsp = combine_two_smocking_patterns(fsp1, fsp2, axis, dist, shift)
         
-            
-            all_sp = np.concatenate((all_sp1, all_sp2))
-            all_sp_lid = np.concatenate( (fsp1.stitching_points_line_id, fsp2.stitching_points_line_id + fsp1.num_stitching_lines() ) )
-            
-            all_V = np.concatenate( (fsp1.V, fsp2.V + p2_trans) )
-
-            gx, gy = np.meshgrid(np.unique(all_V[:,0]), np.unique(all_V[:,1]))
-    
-            F, V, E = extract_graph_from_meshgrid(gx, gy, True)
-            
-            # create the combined pattern
-            fsp = SmockingPattern(V, F, E,
-                 all_sp,
-                 all_sp_lid,
-                 [],
-                 [],
-                 'combined_P1_P2', 
-                 'CombineCollection',
-                 'CombineStitchingLines',
-                 'P1 + P2 combined')
-            
-            # print(all_sp)
-            # print(all_sp_lid) 
-
             # save the combined data to scene
             dt.combine_fsp1_fsp2 = fsp
 
@@ -1853,6 +1864,38 @@ class FSP_CombinePatterns(Operator):
             dt.combine_fsp1_fsp2.plot(fsp3_loc)
 
 
+        return {'FINISHED'}
+
+
+
+class FSP_CombinePatterns_assign_to_fsp(Operator):
+    "Assign the combined pattern to current full smocking pattern"
+    bl_idname = "object.fsp_combine_patterns_assing_to_fsp"
+    bl_label = "Assign combined pattern to full pattern"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        dt = bpy.types.Scene.solver_data
+        
+        fsp = dt.combine_fsp1_fsp2
+
+        if fsp == []:
+            print("Error: Don't have a combined pattern!")
+        else:
+            fsp_new = SmockingPattern(fsp.V, fsp.F, fsp.E,
+                 fsp.stitching_points,
+                 fsp.stitching_points_line_id,
+                 fsp.stitching_points_patch_id,
+                 fsp.stitching_points_vtx_id,
+                 "FullPattern", 
+                 "SmockingPattern",
+                 "StitchingLines",
+                 "Full Smocking Pattern")
+            dt.full_smocking_pattern = fsp_new
+
+            dt.full_smocking_pattern.plot()
+            dt.combine_fsp1_fsp2 = []
+   
         return {'FINISHED'}
 
 
@@ -2049,6 +2092,10 @@ class FULLGRID_PT_combine_patterns(FullGrid_panel, bpy.types.Panel):
         row = layout.row()
         row.operator(FSP_CombinePatterns.bl_idname, text="Combined P1 and P2", icon="NODE_COMPOSITING")
 
+        row = layout.row()
+        row = layout.row()
+        row.operator(FSP_CombinePatterns_assign_to_fsp.bl_idname, text="Assign to Full Smocking Pattern", icon="FORWARD")
+
 
 
 
@@ -2186,6 +2233,7 @@ _classes = [
     FSP_CombinePatterns_assign_to_first,
     FSP_CombinePatterns_assign_to_second,
     FSP_CombinePatterns,
+    FSP_CombinePatterns_assign_to_fsp,
     
     
     UNITGRID_PT_main,
