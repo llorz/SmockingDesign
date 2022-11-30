@@ -1093,15 +1093,14 @@ def combine_two_smocking_patterns(fsp1, fsp2, axis, dist, shift):
         p2_trans = [shift, fsp1.return_pattern_height() + dist]
         ind = 1
     
+
     # if fsp2 has some margin, we need to thift the margin before combining two patterns
-    val = min(fsp2.V[:, ind])
-    fsp2.V[:, ind] -= val
-    fsp2.stitching_points[:, ind] -= val  
+    p2_trans[ind] -= min(fsp2.V[:, ind])
 
     # we translate the vtx and stitching points in P2 by p2_trans
     # then merge them into a singe pattern
-    all_sp1 = fsp1.stitching_points[:,0:2]
-    all_sp2 = fsp2.stitching_points[:,0:2] + p2_trans[0:2]
+    all_sp1 = fsp1.stitching_points
+    all_sp2 = fsp2.stitching_points + p2_trans[0:2]
 
     
     all_sp = np.concatenate((all_sp1, all_sp2))
