@@ -84,7 +84,7 @@ PROPS = [
     ('file_import_p2', bpy.props.StringProperty(subtype='FILE_PATH', name='P2 path')),
     ('combine_direction', bpy.props.EnumProperty(items = [("x", "", "along x axis", 'EVENT_X',0), ("y", "", "along y axis",'EVENT_Y',1)], name="Axis", default="x")),
     ('combine_space', bpy.props.IntProperty(name='space', default=2, min=1, max=20)),
-    ('combine_shift', bpy.props.IntProperty(name='shift', default=2, min=-20, max=20)),
+    ('combine_shift', bpy.props.IntProperty(name='shift', default=0, min=-20, max=20)),
     ('fsp_edit_selection', bpy.props.EnumProperty(items= (('V', '', 'move vertices', 'VERTEXSEL', 0),    
                                                           ('E', '', 'move edges', 'EDGESEL', 1),    
                                                           ('F', '', 'add/delete faces', 'FACESEL', 2)) ,  
@@ -178,15 +178,17 @@ class debug_func(Operator):
         print('debugging...')
         
          
-        
-        my_coll = bpy.data.collections.new('TmpCollection')
-        bpy.context.scene.collection.children.link(my_coll)
-    
-        # load the exiting smocking pattern to my_coll
-        file_name = context.scene.file_import_p1
-        fsp = read_obj_to_fsp(file_name)
-        fsp.plot(location=[-5,-5])
+        radius = context.scene.radial_grid_radius
 
+        dt = bpy.types.Scene.solver_data
+
+        fsp = dt.full_smocking_pattern
+
+        V = fsp.V[:, 0:2]
+        V_new = V # stores the deformed positions
+
+        y_ticks = np.unique(V[:,1])
+        print(y_ticks)
 
         return {'FINISHED'}
 
@@ -352,7 +354,8 @@ class SmockingPattern():
 
     def plot(self, location=(0,0)):
         
-        clean_objects_in_collection(self.coll_name)
+        initialize_pattern_collection(self.coll_name, self.stroke_coll_name)
+
         
         construct_object_from_mesh_to_scene(self.V, self.F, self.pattern_name, self.coll_name)
 
@@ -373,7 +376,6 @@ class SmockingPattern():
                           coll_name=self.coll_name)
        
         # visualize all stitching lines
-        clean_objects_in_collection(self.stroke_coll_name)
 
         for lid in range(max(self.stitching_points_line_id)+1):
             
@@ -407,7 +409,7 @@ class SmockingPattern():
 #                          Utility Functions
 # ========================================================================
 
-def delete_collection():    
+def delete_all_collections():    
     for coll in bpy.data.collections:
         bpy.data.collections.remove(coll)
 
@@ -422,23 +424,13 @@ def delete_all_gpencil_objects():
             bpy.data.objects.remove(obj)
 
 
-def delete_all():
-    bpy.ops.object.select_all(action='SELECT')
-    bpy.ops.object.delete()
-    
 
 
-def clean_objects() -> None:
+def delete_all_objects() -> None:
     for item in bpy.data.objects:
         bpy.data.objects.remove(item)
 
 
-def delete_one_collection(coll_name):
-    for coll in bpy.data.collections:
-        if coll_name in coll.name:
-            for child in coll.children:
-                bpy.data.collections.remove(child)
-                clean_objects_in_collection(coll.name)
 
 
 
@@ -911,30 +903,65 @@ def refresh_stitching_lines():
 
     
 def initialize():
-    delete_collection()
-    clean_objects()
+    delete_all_collections()
+    delete_all_objects()
+
+    initialize_pattern_collection(COLL_NAME_USP, COLL_NAME_USP_SL)
+    initialize_pattern_collection(COLL_NAME_FSP, COLL_NAME_FSP_SL)
+    initialize_pattern_collection(COLL_NAME_P1, COLL_NAME_P1_SL)
+    initialize_pattern_collection(COLL_NAME_P2, COLL_NAME_P2_SL)
+    initialize_pattern_collection(COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL)
     
-    # collections for unit smocking pattern
-    my_coll = bpy.data.collections.new(COLL_NAME_USP)
-    bpy.context.scene.collection.children.link(my_coll)
+
+
+
+def initialize_pattern_collection(coll_name, stroke_coll_name):
+    if_coll_exist = False
+
+    for coll in bpy.data.collections:
+        if coll_name in coll.name:
+            if_tmp_coll_exist = True
+
+    if not if_coll_exist:
+
+        my_coll = bpy.data.collections.new(coll_name)
+        bpy.context.scene.collection.children.link(my_coll)
+
+        my_coll_strokes = bpy.data.collections.new(stroke_coll_name)
+        my_coll.children.link(my_coll_strokes)
     
-    my_coll_strokes = bpy.data.collections.new(COLL_NAME_USP_SL)
-    my_coll.children.link(my_coll_strokes)
-    
-    # collections for the full smocking pattern
-    
-    my_coll = bpy.data.collections.new(COLL_NAME_FSP)
-    bpy.context.scene.collection.children.link(my_coll)
-    
-    my_coll_strokes = bpy.data.collections.new(COLL_NAME_FSP_SL)
-    my_coll.children.link(my_coll_strokes)
-    
-    
-    # collections for the smocked graph
-    my_coll = bpy.data.collections.new('SmockedGraph')
-    bpy.context.scene.collection.children.link(my_coll)
-    
-    
+
+    for c in [coll_name, stroke_coll_name]:
+            clean_objects_in_collection(c)
+
+# TODO: make the layout better
+def return_tmp_pattern_location():
+    dt = bpy.types.Scene.solver_data
+    fsp1 = dt.tmp_fsp1  
+    fsp2 = dt.tmp_fsp2
+    fsp3 = dt.combine_fsp1_fsp2
+
+    fsp1_loc = [0, 0]
+    fsp2_loc = [0, 0]
+    fsp3_loc = [0, 0]
+
+    if fsp1 != []:
+        fsp1_loc[0] = -fsp1.return_pattern_width() - LAYOUT_X_SHIFT 
+        fsp1_loc[1] = fsp1.return_pattern_height() + LAYOUT_Y_SHIFT 
+
+    if fsp2 != []:
+        fsp2_loc[0] = -fsp2.return_pattern_width() - LAYOUT_X_SHIFT 
+        fsp2_loc[1] = 0
+
+    if fsp3 != []: # the combined pattern
+        fsp3_loc[0] = -fsp3.return_pattern_width() - LAYOUT_X_SHIFT
+        fsp3_loc[1] = - fsp2.return_pattern_height() - LAYOUT_Y_SHIFT
+
+    a = min(fsp1_loc[0], fsp2_loc[0], fsp3_loc[0])
+
+    fsp1_loc[0], fsp2_loc[0], fsp3_loc[0] = a, a, a
+
+    return fsp1_loc, fsp2_loc, fsp3_loc
     
 # ========================================================================
 #                      Core functions for smocking pattern
@@ -1125,6 +1152,9 @@ def combine_two_smocking_patterns(fsp1, fsp2, axis, dist, shift):
 
     return fsp    
 
+
+
+
 # ========================================================================
 #                          Functions for UIs
 # ========================================================================
@@ -1228,7 +1258,8 @@ class USP_FinishPattern(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        
+        initialize_pattern_collection(COLL_NAME_USP, COLL_NAME_USP_SL)
+            
         props = bpy.context.scene.sl_props
                 
         mesh = bpy.data.objects[MESH_NAME_USP]
@@ -1238,7 +1269,7 @@ class USP_FinishPattern(Operator):
                                                  context.scene.base_x,
                                                  context.scene.base_y)
 
-        delete_all()                               
+
         usp.plot()
         
         # save the loaded pattern to the scene
@@ -1309,9 +1340,9 @@ class ImportUnitPattern(Operator):
     def execute(self, context):
         # refresh the drawing of the unit pattern
         # clean usp and fsp, don't touch the tmp collections
-        clear_coll = [COLL_NAME_USP, COLL_NAME_USP_SL, COLL_NAME_FSP, COLL_NAME_FSP_SL]
-        for c in clear_coll:
-            clean_objects_in_collection(c)
+        initialize_pattern_collection(COLL_NAME_USP, COLL_NAME_USP_SL)
+        initialize_pattern_collection(COLL_NAME_FSP, COLL_NAME_FSP_SL)
+
         
         file_name = bpy.path.abspath(context.scene.path_import)
         usp = read_usp(file_name)
@@ -1339,10 +1370,11 @@ class USP_CreateGrid(Operator):
     
 
     def execute(self, context):
-        for coll_name in [COLL_NAME_USP, COLL_NAME_USP_SL, COLL_NAME_FSP, COLL_NAME_FSP_SL]:
-            clean_objects_in_collection(coll_name)
-       
         
+        initialize_pattern_collection(COLL_NAME_USP, COLL_NAME_USP_SL)
+        initialize_pattern_collection(COLL_NAME_FSP, COLL_NAME_FSP_SL)
+        
+
         base_x = context.scene.base_x
         base_y = context.scene.base_y
         
@@ -1660,83 +1692,26 @@ class FSP_EditMesh_radial_grid(Operator):
     
     def execute(self, context):
         print('not done yet :/')
+        
+        radius = context.scene.radial_grid_radius
+
+        dt = bpy.types.Scene.solver_data
+
+        fsp = dt.full_smocking_pattern
+
+        V = fsp.V[:, 0:2]
+        V_new = V # stores the deformed positions
+
+        y_ticks = np.unique(V[:,1])
+        print(y_ticks)
+
         return {'FINISHED'}
 
 
 
 
-def clean_tmp_collections():
-
-    if_tmp_coll_exist = False
-    for coll in bpy.data.collections:
-        if COLL_NAME_P1 in coll.name:
-            if_tmp_coll_exist = True
-
-    if if_tmp_coll_exist:
-        # remove all the existing objects
-        for c in [COLL_NAME_P1, COLL_NAME_P2, COLL_NAME_P1_SL, COLL_NAME_P2_SL]:
-            clean_objects_in_collection(c)
-
-    else:
-        # create collections for P1 pattern
-        my_coll = bpy.data.collections.new(COLL_NAME_P1)
-        bpy.context.scene.collection.children.link(my_coll)
-        my_coll_strokes = bpy.data.collections.new(COLL_NAME_P1_SL)
-        my_coll.children.link(my_coll_strokes)
-
-        # create collections for P2 pattern
-        my_coll = bpy.data.collections.new(COLL_NAME_P2)
-        bpy.context.scene.collection.children.link(my_coll)
-        my_coll_strokes = bpy.data.collections.new(COLL_NAME_P2_SL)
-        my_coll.children.link(my_coll_strokes)
             
 
-def clean_combined_collections():
-    
-    if_com_coll_exist = False
-    for coll in bpy.data.collections:
-        if COLL_NAME_FSP_TMP in coll.name:
-            if_com_coll_exist = True
-
-    if if_com_coll_exist:
-        # remove all the existing objects
-        for c in [COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL]:
-            clean_objects_in_collection(c)
-    else:
-        my_coll = bpy.data.collections.new(COLL_NAME_FSP_TMP)
-        bpy.context.scene.collection.children.link(my_coll)
-
-        my_coll_strokes = bpy.data.collections.new(COLL_NAME_FSP_TMP_SL)
-        my_coll.children.link(my_coll_strokes)
-            
-
-def return_tmp_pattern_location():
-    dt = bpy.types.Scene.solver_data
-    fsp1 = dt.tmp_fsp1  
-    fsp2 = dt.tmp_fsp2
-    fsp3 = dt.combine_fsp1_fsp2
-
-    fsp1_loc = [0, 0]
-    fsp2_loc = [0, 0]
-    fsp3_loc = [0, 0]
-
-    if fsp1 != []:
-        fsp1_loc[0] = -fsp1.return_pattern_width() - LAYOUT_X_SHIFT 
-        fsp1_loc[1] = fsp1.return_pattern_height() + LAYOUT_Y_SHIFT 
-
-    if fsp2 != []:
-        fsp2_loc[0] = -fsp2.return_pattern_width() - LAYOUT_X_SHIFT 
-        fsp2_loc[1] = 0
-
-    if fsp3 != []: # the combined pattern
-        fsp3_loc[0] = -fsp3.return_pattern_width() - LAYOUT_X_SHIFT
-        fsp3_loc[1] = - fsp2.return_pattern_height() - LAYOUT_Y_SHIFT
-
-    a = min(fsp1_loc[0], fsp2_loc[0], fsp3_loc[0])
-
-    fsp1_loc[0], fsp2_loc[0], fsp3_loc[0] = a, a, a
-
-    return fsp1_loc, fsp2_loc, fsp3_loc
 
 
 class FSP_CombinePatterns_load_first(Operator):
@@ -1744,10 +1719,10 @@ class FSP_CombinePatterns_load_first(Operator):
     bl_label = "Load the first pattern"
     bl_options = {'REGISTER', 'UNDO'}
     
-    def execute(self, context):        
-        clean_tmp_collections()
-        clean_combined_collections()
-
+    def execute(self, context):
+        initialize_pattern_collection(COLL_NAME_P1, COLL_NAME_P1_SL)
+        initialize_pattern_collection(COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL)
+        
 
         # load the exiting smocking pattern to my_coll
         file_name = bpy.path.abspath(context.scene.file_import_p1)
@@ -1777,9 +1752,10 @@ class FSP_CombinePatterns_load_second(Operator):
     bl_label = "Load the second pattern"
     bl_options = {'REGISTER', 'UNDO'}
     
-    def execute(self, context):        
-        clean_tmp_collections()
-        clean_combined_collections()
+    def execute(self, context):     
+        initialize_pattern_collection(COLL_NAME_P2, COLL_NAME_P2_SL)
+        initialize_pattern_collection(COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL)
+
     
         # load the exiting smocking pattern to my_coll
         file_name = bpy.path.abspath(context.scene.file_import_p2)
@@ -1807,8 +1783,9 @@ class FSP_CombinePatterns_assign_to_first(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        clean_tmp_collections()
-        clean_combined_collections()
+        initialize_pattern_collection(COLL_NAME_P1, COLL_NAME_P1_SL)
+        initialize_pattern_collection(COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL)
+
 
         dt = bpy.types.Scene.solver_data
         fsp = dt.full_smocking_pattern
@@ -1843,8 +1820,9 @@ class FSP_CombinePatterns_assign_to_second(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):        
-        clean_tmp_collections()
-        clean_combined_collections()
+        initialize_pattern_collection(COLL_NAME_P2, COLL_NAME_P2_SL)
+        initialize_pattern_collection(COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL)
+
 
         dt = bpy.types.Scene.solver_data
         fsp = dt.full_smocking_pattern
@@ -1886,7 +1864,9 @@ class FSP_CombinePatterns(Operator):
     
     def execute(self, context):
         
-        clean_combined_collections()
+        initialize_pattern_collection(COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL)
+
+
 
         dt = bpy.types.Scene.solver_data
         fsp1 = dt.tmp_fsp1
@@ -1962,8 +1942,9 @@ class debug_panel(bpy.types.Panel):
     bl_options ={"HEADER_LAYOUT_EXPAND"}
     
     def draw(self, context):
-        
-        row = self.layout.row()
+        layout = self.layout
+        c = layout.column()
+        row = c.row()
         row.operator(debug_clear.bl_idname, text="clear everything", icon='QUIT')
         row = self.layout.row()
         row.operator(debug_print.bl_idname, text="print data in scene", icon='GHOST_ENABLED')
@@ -2002,14 +1983,21 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
         layout = self.layout
         
         layout.label(text= "Generate A Grid for Drawing:")
-        row = layout.row()
-        row.prop(context.scene,'base_x')
-        row.prop(context.scene,'base_y')
-
+        c = layout.column()
+        row = c.row()
+        split = row.split(factor=1/4)
+        c = split.column()
+        c.prop(context.scene,'base_x')
         
-        row = layout.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(USP_CreateGrid.bl_idname, text="Generate Grid", icon="GRID")
+
+        split = split.split(factor=1/3)
+        c = split.column()
+        c.prop(context.scene,'base_y')
+
+
+        c = split.column()
+        c.alert=context.scene.if_highlight_button
+        c.operator(USP_CreateGrid.bl_idname, text="Generate Grid", icon="GRID")
 
         
         row = layout.row()
@@ -2222,7 +2210,11 @@ class FULLGRID_PT_edit_pattern(FullGrid_panel, bpy.types.Panel):
         layout.label(text="Deform into Radial Grid")
         row = layout.row()
         row.prop(context.scene, 'radial_grid_radius')
+
+        row.alert=context.scene.if_highlight_button
         row.operator(FSP_EditMesh_radial_grid.bl_idname, text="Deform", icon="MOD_SIMPLEDEFORM")
+
+        row = layout.row()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_CombinePatterns_assign_to_fsp.bl_idname, text="Assign to Full Smocking Pattern", icon="FORWARD")
         
@@ -2503,3 +2495,21 @@ if __name__ == "__main__":
 #    
 #    xx = [-m_left + min_x, min_x] + list(range_x) + [max_x, max_x + m_right]
 #    yy = [-m_bottom + min_y, min_y] + list(range_y) + [max_y, max_y + m_top]
+
+
+
+
+
+# def delete_one_collection(coll_name):
+#     for coll in bpy.data.collections:
+#         if coll_name in coll.name:
+#             for child in coll.children:
+#                 bpy.data.collections.remove(child)
+#                 clean_objects_in_collection(coll.name)
+
+
+
+# def delete_all():
+#     bpy.ops.object.select_all(action='SELECT')
+#     bpy.ops.object.delete()
+
