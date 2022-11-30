@@ -305,19 +305,31 @@ class SmockingPattern():
         self.E = E_new
         # update the stitching points ID since the V is updated
         self.get_stitching_points_vtx_id()
+
+
+
     
     def update_stitching_lines(self, all_sp, all_sp_lid, all_sp_pid):
         self.stitching_points = np.array(all_sp)
         self.stitching_points_line_id = np.array(all_sp_lid)
         self.stitching_points_patch_id = np.array(all_sp_pid)
         self.get_stitching_points_vtx_id()
-        
+     
+
+    def move_to_origin(self):
+        trans = [min(self.V[:, 0]), min(self.V[:, 1]), 0]
+        self.V = self.V - trans[0:len(self.V[0])]
+        self.stitching_points = self.stitching_points - trans[0:len(self.stitching_points[0])]
+
+
     def get_vid_in_stitching_line(self, lid):
         pids = find_index_in_list(self.stitching_points_line_id, lid)
         vtxID = self.stitching_points_vtx_id[pids]
         
         return vtxID
-        
+    
+
+
     def get_pts_in_stitching_line(self, lid):
     
         pids = find_index_in_list(self.stitching_points_line_id, lid)
@@ -820,6 +832,8 @@ def show_mesh(mesh, scale=(1,1,1), location=(0,0,0)):
     mesh.display_type = 'WIRE'
     select_one_object(mesh)
 
+
+
 def generate_grid_for_unit_pattern(base_x, base_y, if_add_diag=False):
     # there is some but in blender subdivison
     # instead, manually create a grid
@@ -831,8 +845,7 @@ def generate_grid_for_unit_pattern(base_x, base_y, if_add_diag=False):
     mesh = bpy.data.objects[MESH_NAME_USP]
     
     show_mesh(mesh)
-    
-    
+
     return mesh
     
 
@@ -1067,21 +1080,26 @@ def tile_unit_smocking_pattern_regular(usp, num_x, num_y, shift_x, shift_y):
 
 
 
-
 def combine_two_smocking_patterns(fsp1, fsp2, axis, dist, shift):
 
     if axis == 'x':
         # [P1, P2]
         p2_trans = [fsp1.return_pattern_width() + dist, shift]
+        ind = 0
+
     elif axis == 'y':
         # [P1
         #  P2]
         p2_trans = [shift, fsp1.return_pattern_height() + dist]
+        ind = 1
+    
+    # if fsp2 has some margin, we need to thift the margin before combining two patterns
+    val = min(fsp2.V[:, ind])
+    fsp2.V[:, ind] -= val
+    fsp2.stitching_points[:, ind] -= val  
 
     # we translate the vtx and stitching points in P2 by p2_trans
     # then merge them into a singe pattern
-    
-    # TODO: need to fix the dimension of V and stitching points
     all_sp1 = fsp1.stitching_points[:,0:2]
     all_sp2 = fsp2.stitching_points[:,0:2] + p2_trans[0:2]
 
