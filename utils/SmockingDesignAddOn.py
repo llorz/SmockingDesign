@@ -91,7 +91,8 @@ PROPS = [
                                    default="F",
                                    name = "Edit Full Smocking Pattern",  
                                    description = "")),
-    ('radial_grid_radius', bpy.props.FloatProperty(name='radius', default=2, min=1, max=20)) 
+    ('radial_grid_ratio', bpy.props.FloatProperty(name='ratio', default=0.9, min=0.1, max=1)) 
+
     ]
     
     
@@ -119,7 +120,7 @@ class SolverData():
     # temporary data
     tmp_fsp1 = []
     tmp_fsp2 = []
-    combine_fsp1_fsp2 = []
+    tmp_fsp = []
 # ========================================================================
 #                         classes for the solver
 # ========================================================================
@@ -140,7 +141,7 @@ class debug_clear(Operator):
         dt.smocked_graph = []
         dt.tmp_fsp1 = []
         dt.tmp_fsp2 = []
-        dt.combine_fsp1_fsp2 = []
+        dt.tmp_fsp = []
 
         return {'FINISHED'}
 
@@ -170,6 +171,7 @@ class debug_print(Operator):
 
 
 
+
 class debug_func(Operator):
     bl_idname = "object.debug_func"
     bl_label = "function to test"
@@ -177,18 +179,7 @@ class debug_func(Operator):
     def execute(self, context):
         print('debugging...')
         
-         
-        radius = context.scene.radial_grid_radius
-
-        dt = bpy.types.Scene.solver_data
-
-        fsp = dt.full_smocking_pattern
-
-        V = fsp.V[:, 0:2]
-        V_new = V # stores the deformed positions
-
-        y_ticks = np.unique(V[:,1])
-        print(y_ticks)
+        
 
         return {'FINISHED'}
 
@@ -939,7 +930,7 @@ def return_tmp_pattern_location():
     dt = bpy.types.Scene.solver_data
     fsp1 = dt.tmp_fsp1  
     fsp2 = dt.tmp_fsp2
-    fsp3 = dt.combine_fsp1_fsp2
+    fsp3 = dt.tmp_fsp
 
     fsp1_loc = [0, 0]
     fsp2_loc = [0, 0]
@@ -1153,6 +1144,118 @@ def combine_two_smocking_patterns(fsp1, fsp2, axis, dist, shift):
     return fsp    
 
 
+def deform_regular_into_radial_grid(V, ratio):
+
+    x_ticks = np.unique(V[:,0]) # use this to determine the angle
+    y_ticks = np.unique(V[:,1]) # use this to determine the radius
+
+
+
+    theta = (x_ticks - min(x_ticks))/(max(x_ticks)-min(x_ticks)) *2*np.pi
+
+    angle_dict = {}
+    for x_coord, x_theta in zip(x_ticks, theta):
+        angle_dict[x_coord] = x_theta
+
+
+
+    width = max(x_ticks) - min(x_ticks)
+
+    radius_dict = {}
+    radius_dict[min(y_ticks)] = width / (2*np.pi)
+
+    for y1, y2 in zip(y_ticks[:-1], y_ticks[1:]):
+        r1 = radius_dict[y1]
+
+        scale = 2*np.pi*r1 / width
+        
+        r2 = r1 + (y2 - y1)*scale*ratio
+        
+        radius_dict[y2] = r2
+
+    V_new = []
+    # update the vertex positions
+    for x, y in zip(V[:,0], V[:, 1]):
+        V_new.append([radius_dict[y]*np.cos( angle_dict[x] ), radius_dict[y]*np.sin( angle_dict[x] )] )
+
+    
+    V_new = np.array(V_new)
+
+    return V_new
+
+
+
+def deform_fsp_into_radial_grid(fsp, ratio):
+
+    V = fsp.V[:, 0:2]
+    V_new = deform_regular_into_radial_grid(V, ratio)
+
+    # remove the duplicated vertices
+    # x_min and x_max are merged together
+    vid_min = np.array(find_index_in_list(V[:, 0], min(V[:, 0])))
+    vid_max = np.array(find_index_in_list(V[:, 0], max(V[:, 0])))
+
+    if len(vid_min) != len(vid_max):
+        if_merge = False
+    else: 
+        ind1 = np.argsort(V[vid_min, 1])
+        ind2 = np.argsort(V[vid_max, 1])
+
+        vid_min = vid_min[ind1]
+        vid_max = vid_max[ind2]
+
+        v1 = V_new[vid_min, :]
+        v2 = V_new[vid_max, :]
+
+        err = np.linalg.norm(v1 - v2)
+        
+        if err > 1e-6:
+            if_merge = False
+        else:
+            if_merge = True
+    
+    if not if_merge:
+        print('We cannot transform the grid to radial grid, it is already distorted')
+    else:
+        nv = V.shape[0]
+        # replace vid_max by vid_min
+        corres = np.empty((nv, 2), 'int')
+        corres[:, 0] = np.array(range(0,nv))
+        corres[vid_min, 1] = np.array(range(0,len(vid_min)))
+        corres[vid_max, 1] = corres[vid_min, 1]
+    
+        vid_rest = np.setdiff1d(np.array(range(0,nv)), np.concatenate((vid_min, vid_max)))
+
+        corres[vid_rest, 1] = np.array(range(0,len(vid_rest))) + len(vid_min)
+
+        V_new = np.concatenate((V_new[vid_min, :], V_new[vid_rest, :]))
+
+
+        # i.e., we map corres[:, 0] to corres[:, 1]
+        F_new = []
+        for f in fsp.F:
+            F_new.append(np.array(corres[f, 1]))
+
+        E_new = []    
+        for e in fsp.E:
+            E_new.append(np.array(corres[e, 1]))
+
+        E_new = np.array(sort_edge(E_new))
+
+
+        all_sp = V_new[corres[fsp.stitching_points_vtx_id, 1], :]
+ 
+        fsp_new = SmockingPattern(V_new, F_new, E_new,
+                                  all_sp,
+                                  fsp.stitching_points_line_id,
+                                  [],
+                                  [],
+                                  'RadialPattern', 
+                                  COLL_NAME_FSP_TMP,
+                                  COLL_NAME_FSP_TMP_SL,
+                                  'Pattern in Radial Grid')
+
+        return fsp_new
 
 
 # ========================================================================
@@ -1458,7 +1561,7 @@ class FSP_AddMargin(Operator):
         V = fsp.V
         
         gx, gy = add_margin_to_grid(np.unique(V[:,0]), np.unique(V[:, 1]),
-                                    m_top, m_bottom, m_left, m_right)
+                                    m_left, m_right, m_top, m_bottom)
     
         F, V, E = extract_graph_from_meshgrid(gx, gy, True)
         
@@ -1684,6 +1787,7 @@ class FSP_EditMesh_done(Operator):
         return {'FINISHED'}
 
 
+
     
 class FSP_EditMesh_radial_grid(Operator):
     bl_idname = "object.fsp_deform_regular_into_radial_grid"
@@ -1691,19 +1795,23 @@ class FSP_EditMesh_radial_grid(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        print('not done yet :/')
-        
-        radius = context.scene.radial_grid_radius
+        # if ratio = 1: the radial grid cell will be close to a square
+        ratio = context.scene.radial_grid_ratio
+
 
         dt = bpy.types.Scene.solver_data
 
         fsp = dt.full_smocking_pattern
 
-        V = fsp.V[:, 0:2]
-        V_new = V # stores the deformed positions
 
-        y_ticks = np.unique(V[:,1])
-        print(y_ticks)
+        fsp_new = deform_fsp_into_radial_grid(fsp, ratio)
+
+        initialize_pattern_collection(COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL)
+
+        
+        fsp_new.plot((-fsp_new.return_pattern_width()-1, 0, 0))
+
+        dt.tmp_fsp = fsp_new
 
         return {'FINISHED'}
 
@@ -1732,7 +1840,7 @@ class FSP_CombinePatterns_load_first(Operator):
         dt = bpy.types.Scene.solver_data
         dt.tmp_fsp1 = fsp # save the data to scene
 
-        dt.combine_fsp1_fsp2 = []
+        dt.tmp_fsp = []
 
         fsp1_loc, fsp2_loc, _ = return_tmp_pattern_location()
         
@@ -1765,7 +1873,7 @@ class FSP_CombinePatterns_load_second(Operator):
         dt = bpy.types.Scene.solver_data
         dt.tmp_fsp2 = fsp # save the data to scene
 
-        dt.combine_fsp1_fsp2 = []
+        dt.tmp_fsp = []
 
         fsp1_loc, fsp2_loc, _ = return_tmp_pattern_location()
 
@@ -1790,7 +1898,7 @@ class FSP_CombinePatterns_assign_to_first(Operator):
         dt = bpy.types.Scene.solver_data
         fsp = dt.full_smocking_pattern
 
-        dt.combine_fsp1_fsp2 = []
+        dt.tmp_fsp = []
 
         if fsp == []:
             print('ERROR: there is no full smocking pattern in the scene')
@@ -1827,7 +1935,7 @@ class FSP_CombinePatterns_assign_to_second(Operator):
         dt = bpy.types.Scene.solver_data
         fsp = dt.full_smocking_pattern
 
-        dt.combine_fsp1_fsp2 = []
+        dt.tmp_fsp = []
 
         if fsp == []:
             print('ERROR: there is no full smocking pattern in the scene')
@@ -1882,7 +1990,7 @@ class FSP_CombinePatterns(Operator):
             fsp = combine_two_smocking_patterns(fsp1, fsp2, axis, dist, shift)
         
             # save the combined data to scene
-            dt.combine_fsp1_fsp2 = fsp
+            dt.tmp_fsp = fsp
 
 
             # udpate the patterns
@@ -1890,26 +1998,27 @@ class FSP_CombinePatterns(Operator):
 
             dt.tmp_fsp1.plot(fsp1_loc)
             dt.tmp_fsp2.plot(fsp2_loc)
-            dt.combine_fsp1_fsp2.plot(fsp3_loc)
+            dt.tmp_fsp.plot(fsp3_loc)
 
 
         return {'FINISHED'}
 
 
 
-class FSP_CombinePatterns_assign_to_fsp(Operator):
-    "Assign the combined pattern to current full smocking pattern"
-    bl_idname = "object.fsp_combine_patterns_assign_to_fsp"
-    bl_label = "Assign combined pattern to full pattern"
+
+class FSP_confirm_tmp_fsp(Operator):
+    "Assign the temporary pattern to current full smocking pattern"
+    bl_idname = "object.fsp_confirm_temp_fsp"
+    bl_label = "Confirm temprary smocking pattern"
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
         dt = bpy.types.Scene.solver_data
         
-        fsp = dt.combine_fsp1_fsp2
+        fsp = dt.tmp_fsp
 
         if fsp == []:
-            print("Error: Don't have a combined pattern!")
+            print("Error: Don't have a temporary pattern!")
         else:
             fsp_new = SmockingPattern(fsp.V, fsp.F, fsp.E,
                  fsp.stitching_points,
@@ -1923,7 +2032,9 @@ class FSP_CombinePatterns_assign_to_fsp(Operator):
             dt.full_smocking_pattern = fsp_new
 
             dt.full_smocking_pattern.plot()
-            dt.combine_fsp1_fsp2 = []
+            dt.tmp_fsp = []
+
+            initialize_pattern_collection(COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL)
    
         return {'FINISHED'}
 
@@ -2153,7 +2264,7 @@ class FULLGRID_PT_combine_patterns(FullGrid_panel, bpy.types.Panel):
         row = layout.row()
         row = layout.row()
         row.alert=context.scene.if_highlight_button
-        row.operator(FSP_CombinePatterns_assign_to_fsp.bl_idname, text="Assign to Full Smocking Pattern", icon="FORWARD")
+        row.operator(FSP_confirm_tmp_fsp.bl_idname, text="Assign to Full Smocking Pattern", icon="FORWARD")
 
 
 
@@ -2209,14 +2320,14 @@ class FULLGRID_PT_edit_pattern(FullGrid_panel, bpy.types.Panel):
 
         layout.label(text="Deform into Radial Grid")
         row = layout.row()
-        row.prop(context.scene, 'radial_grid_radius')
+        row.prop(context.scene, 'radial_grid_ratio')
 
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_EditMesh_radial_grid.bl_idname, text="Deform", icon="MOD_SIMPLEDEFORM")
 
         row = layout.row()
         row.alert=context.scene.if_highlight_button
-        row.operator(FSP_CombinePatterns_assign_to_fsp.bl_idname, text="Assign to Full Smocking Pattern", icon="FORWARD")
+        row.operator(FSP_confirm_tmp_fsp.bl_idname, text="Assign to Full Smocking Pattern", icon="FORWARD")
         
         
         
@@ -2325,7 +2436,7 @@ _classes = [
     FSP_CombinePatterns_assign_to_first,
     FSP_CombinePatterns_assign_to_second,
     FSP_CombinePatterns,
-    FSP_CombinePatterns_assign_to_fsp,
+    FSP_confirm_tmp_fsp,
     
     
     UNITGRID_PT_main,
