@@ -1565,9 +1565,19 @@ class FSP_AddMargin(Operator):
     
         F, V, E = extract_graph_from_meshgrid(gx, gy, True)
         
-        fsp.update_mesh(V, F, E)
-        fsp.plot()
-        
+        initialize_pattern_collection(COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL)
+
+        fsp_new = SmockingPattern(V, F, E,
+                                  fsp.stitching_points,
+                                  fsp.stitching_points_line_id,
+                                  [],
+                                  [],
+                                  'tmp', 
+                                  COLL_NAME_FSP_TMP,
+                                  COLL_NAME_FSP_TMP_SL,
+                                  'Preview: add margin')
+        dt.tmp_fsp = fsp_new
+        dt.tmp_fsp.plot((-fsp_new.return_pattern_width()-1, 0, 0))
         
         return {'FINISHED'}
 
@@ -2351,9 +2361,12 @@ class FULLGRID_PT_add_margin(FullGrid_panel, bpy.types.Panel):
         row = layout.row()
         row = layout.row()
         row.alert=context.scene.if_highlight_button
-        row.operator(FSP_AddMargin.bl_idname, text="Add Margin to Pattern", icon='OBJECT_DATAMODE')
+        row.operator(FSP_AddMargin.bl_idname, text="Add Margin to Pattern (Preview)", icon='OBJECT_DATAMODE')
 
-
+        row = layout.row()
+        row.alert=context.scene.if_highlight_button
+        row.operator(FSP_confirm_tmp_fsp.bl_idname, text="Assign to Full Smocking Pattern", icon="FORWARD")
+        
 
 class FULLGRID_PT_export_mesh(FullGrid_panel, bpy.types.Panel):
     bl_label = "Export Current Pattern to Mesh"
