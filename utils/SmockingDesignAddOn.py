@@ -33,9 +33,31 @@ STROKE_SIZE = 10 # to plot the stiching lines
 LAYOUT_Y_SHIFT = 3
 LAYOUT_X_SHIFT = 2
 
+# collection names
+COLL_NAME_USP = "UnitSmockingPattern"
+COLL_NAME_USP_SL = "UnitStitchingLines"
+COLL_NAME_FSP = "SmockingPattern"
+COLL_NAME_FSP_SL = "StitchingLines"
+COLL_NAME_P1 = "FSP1"
+COLL_NAME_P1_SL = "FSP1_SL"
+COLL_NAME_P2 = "FSP2"
+COLL_NAME_P2_SL = "FSP2_SL"
+
+COLL_NAME_FSP_TMP = "FSP_tmp"
+COLL_NAME_FSP_TMP_SL = "FSP_tmp_SL"
+
+
+MESH_NAME_USP = "Grid"
+MESH_NAME_FSP = "FullPattern"
+MESH_NAME_P1 = 'Pattern01'
+MESH_NAME_P2 = 'Pattern02'
+
+
+
 # global variables from user input
 
 PROPS = [
+    ('if_highlight_button', bpy.props.BoolProperty(name="highlight buttons", default=True)),
     # for unit grid
     ('base_x', bpy.props.IntProperty(name='X', default=3, min=1, max=20)),
     ('base_y', bpy.props.IntProperty(name='Y', default=3, min=1, max=20)),
@@ -48,7 +70,7 @@ PROPS = [
     ('num_y', bpy.props.FloatProperty(name='Ytile', default=3, min=1, max=20)),
     ('shift_x', bpy.props.IntProperty(name='Xshift', default=0, min=-10, max=10)),
     ('shift_y', bpy.props.IntProperty(name='Yshift', default=0, min=-10, max=10)),
-    ('type_tile', bpy.props.EnumProperty(items = [("regular", "regular", "tile in a regular grid"), ("radial", "radial", "tile in a radial grid")], name="Type", default="regular")),
+#    ('type_tile', bpy.props.EnumProperty(items = [("regular", "regular", "tile in a regular grid"), ("radial", "radial", "tile in a radial grid")], name="Type", default="regular")),
     ('margin_top', bpy.props.FloatProperty(name='Top', default=0, min=0, max=10)),
     ('margin_bottom', bpy.props.FloatProperty(name='Bottom', default=0, min=0, max=10)),
     ('margin_left', bpy.props.FloatProperty(name='Left', default=0, min=0, max=10)),
@@ -58,11 +80,19 @@ PROPS = [
     ('filename_export_fullpattern', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
     ('export_format', bpy.props.EnumProperty(items = [(".obj", "OBJ", ".obj"), (".off", "OFF", ".off")], name="Format", default=".obj")),
     # FSP: combine two patterns
-    ('file_import_p1', bpy.props.StringProperty(subtype='FILE_PATH', name='P1')),
-    ('file_import_p2', bpy.props.StringProperty(subtype='FILE_PATH', name='P2')),
-    ('combine_direction', bpy.props.EnumProperty(items = [("x", "x", "x"), ("y", "y", "y")], name="Axis", default="x")),
+    ('file_import_p1', bpy.props.StringProperty(subtype='FILE_PATH', name='P1 path')),
+    ('file_import_p2', bpy.props.StringProperty(subtype='FILE_PATH', name='P2 path')),
+    ('combine_direction', bpy.props.EnumProperty(items = [("x", "", "along x axis", 'EVENT_X',0), ("y", "", "along y axis",'EVENT_Y',1)], name="Axis", default="x")),
     ('combine_space', bpy.props.IntProperty(name='space', default=2, min=1, max=20)),
-    ('combine_shift', bpy.props.IntProperty(name='shift', default=2, min=-20, max=20))]
+    ('combine_shift', bpy.props.IntProperty(name='shift', default=2, min=-20, max=20)),
+    ('fsp_edit_selection', bpy.props.EnumProperty(items= (('V', '', 'move vertices', 'VERTEXSEL', 0),    
+                                                          ('E', '', 'move edges', 'EDGESEL', 1),    
+                                                          ('F', '', 'add/delete faces', 'FACESEL', 2)) ,  
+                                   default="F",
+                                   name = "Edit Full Smocking Pattern",  
+                                   description = "")),
+    ('radial_grid_radius', bpy.props.FloatProperty(name='radius', default=2, min=1, max=20)) 
+    ]
     
     
 # to extract the stitching lines from user selection
@@ -197,11 +227,11 @@ class UnitSmockingPattern():
                           location=(0, self.base_y+0.5, 0), 
                           scale=(1,1,1),
                           obj_name='grid_annotation',
-                          coll_name='UnitSmockingPattern')
+                          coll_name=COLL_NAME_USP)
         
         for lid in range(len(self.stitching_lines)):
             pos = self.get_pts_in_stitching_line(lid)
-            draw_stitching_line(pos, col_blue, "stitching_line_" + str(lid), STROKE_SIZE, 'UnitStitchingLines')
+            draw_stitching_line(pos, col_blue, "stitching_line_" + str(lid), STROKE_SIZE, COLL_NAME_USP_SL)
 #            add_stroke_to_gpencil(pos, col_blue, "USP_StitchingLines", STROKE_SIZE)
 
     def info(self):
@@ -221,8 +251,8 @@ class SmockingPattern():
                  stitching_points_patch_id=[],
                  stitching_points_vtx_id=[],
                  pattern_name = "FllPattern", 
-                 coll_name='SmockingPattern',
-                 stroke_coll_name = "StitchingLines",
+                 coll_name=COLL_NAME_FSP,
+                 stroke_coll_name = COLL_NAME_FSP_SL,
                  annotation_text="Full Smocking Pattern"):
         # the mesh for the smocking pattern
         self.V = V # can be 2D or 3D vtx positions
@@ -431,7 +461,7 @@ def add_text_to_scene(body="test",
                       location=(0,0,0),
                       scale=(1,1,1),
                       obj_name="font_obj",
-                      coll_name="SmockingPattern"):
+                      coll_name=COLL_NAME_FSP):
                           
     font_curve = bpy.data.curves.new(type="FONT", name="Font Curve")
     font_curve.body = body
@@ -496,8 +526,8 @@ def write_fsp_to_obj(fsp, filepath):
 
 def read_obj_to_fsp(file_name, 
                     pattern_name = "FllPattern", 
-                    coll_name='SmockingPattern',
-                    stroke_coll_name = "StitchingLines",
+                    coll_name=COLL_NAME_FSP,
+                    stroke_coll_name = COLL_NAME_FSP_SL,
                     annotation_text="Full Smocking Pattern"):       
     V, F, E, all_sp_lid, all_sp_vid = [], [], [], [], []
 
@@ -710,7 +740,7 @@ def add_stroke_to_gpencil(pts, col, gpencil_name, line_width=12):
     
     
 
-def create_line_stroke_from_gpencil(name="GPencil", line_width=12, coll_name='SmockingPattern'):
+def create_line_stroke_from_gpencil(name="GPencil", line_width=12, coll_name=COLL_NAME_FSP):
     gpencil_data = bpy.data.grease_pencils.new(name)
     gpencil = bpy.data.objects.new(gpencil_data.name, gpencil_data)
 #    bpy.context.collection.objects.link(gpencil)
@@ -729,7 +759,7 @@ def create_line_stroke_from_gpencil(name="GPencil", line_width=12, coll_name='Sm
     return gpencil, gp_stroke
     
 
-def draw_stitching_line(pts, col, name="stitching_line", line_width=12, coll_name='SmockingPattern'): 
+def draw_stitching_line(pts, col, name="stitching_line", line_width=12, coll_name=COLL_NAME_FSP): 
     gpencil, gp_stroke = create_line_stroke_from_gpencil(name, line_width, coll_name)
     gp_stroke.points.add(len(pts))
 
@@ -751,12 +781,12 @@ def draw_stitching_line(pts, col, name="stitching_line", line_width=12, coll_nam
 #       gp_stroke.points[-1].vertex_color = (0.0, 1.0, 0.0, 1.0)
 
 
-def draw_saved_stitching_lines(context, coll_name='SmockingPattern'):
+def draw_saved_stitching_lines(context, coll_name=COLL_NAME_FSP):
     props = bpy.context.scene.sl_props
     print(props.savedStitchingLines)
     for i in range(len(props.savedStitchingLines)):
         vids = props.savedStitchingLines[i]
-        obj = bpy.data.objects['Grid']
+        obj = bpy.data.objects[MESH_NAME_USP]
         pts = get_vtx_pos(obj, vids)
         draw_stitching_line(pts, props.colSaved, "stitching_line_" + str(i), STROKE_SIZE, coll_name)
         
@@ -765,7 +795,7 @@ def draw_saved_stitching_lines(context, coll_name='SmockingPattern'):
 # ---------------------END: add strokes via gpencil ------------------------
 
             
-def construct_object_from_mesh_to_scene(V, F, mesh_name, coll_name='SmockingPattern'):
+def construct_object_from_mesh_to_scene(V, F, mesh_name, coll_name=COLL_NAME_FSP):
     # input: V nv-by-2(3) array, F list of array
     
     # convert F into a list of list
@@ -796,9 +826,9 @@ def generate_grid_for_unit_pattern(base_x, base_y, if_add_diag=False):
     
     gx, gy = create_grid(base_x, base_y)
     F, V, _ = extract_graph_from_meshgrid(gx, gy, if_add_diag)
-    construct_object_from_mesh_to_scene(V, F, 'Grid', 'UnitSmockingPattern')
+    construct_object_from_mesh_to_scene(V, F, MESH_NAME_USP, COLL_NAME_USP)
     
-    mesh = bpy.data.objects['Grid']
+    mesh = bpy.data.objects[MESH_NAME_USP]
     
     show_mesh(mesh)
     
@@ -812,9 +842,9 @@ def generate_tiled_grid_for_full_pattern(len_x, len_y, if_add_diag=True):
     
     F, V, E = extract_graph_from_meshgrid(gx, gy, if_add_diag)
     
-    construct_object_from_mesh_to_scene(V, F, 'FullPattern', 'SmockingPattern')
+    construct_object_from_mesh_to_scene(V, F, MESH_NAME_FSP, COLL_NAME_FSP)
     
-    mesh = bpy.data.objects['FullPattern']
+    mesh = bpy.data.objects[MESH_NAME_FSP]
     
     show_mesh(mesh, 
               scale=(1,1,1), 
@@ -839,11 +869,11 @@ def refresh_stitching_lines():
     all_sp_lid = []
     lid = 0
     
-    trans = get_translation_of_mesh('FullPattern') 
+    trans = get_translation_of_mesh(MESH_NAME_FSP) 
     
     # check the remaining stitching lines
     saved_sl_names = []
-    for obj in bpy.data.collections['StitchingLines'].objects:
+    for obj in bpy.data.collections[COLL_NAME_FSP_SL].objects:
         saved_sl_names.append(obj.name)
 #    print(saved_sl_names)
     
@@ -872,18 +902,18 @@ def initialize():
     clean_objects()
     
     # collections for unit smocking pattern
-    my_coll = bpy.data.collections.new('UnitSmockingPattern')
+    my_coll = bpy.data.collections.new(COLL_NAME_USP)
     bpy.context.scene.collection.children.link(my_coll)
     
-    my_coll_strokes = bpy.data.collections.new('UnitStitchingLines')
+    my_coll_strokes = bpy.data.collections.new(COLL_NAME_USP_SL)
     my_coll.children.link(my_coll_strokes)
     
     # collections for the full smocking pattern
     
-    my_coll = bpy.data.collections.new('SmockingPattern')
+    my_coll = bpy.data.collections.new(COLL_NAME_FSP)
     bpy.context.scene.collection.children.link(my_coll)
     
-    my_coll_strokes = bpy.data.collections.new('StitchingLines')
+    my_coll_strokes = bpy.data.collections.new(COLL_NAME_FSP_SL)
     my_coll.children.link(my_coll_strokes)
     
     
@@ -1072,8 +1102,8 @@ def combine_two_smocking_patterns(fsp1, fsp2, axis, dist, shift):
          [],
          [],
          'combined_P1_P2', 
-         'CombineCollection',
-         'CombineStitchingLines',
+         COLL_NAME_FSP_TMP,
+         COLL_NAME_FSP_TMP_SL,
          'P1 + P2 combined')
 
     return fsp    
@@ -1103,7 +1133,7 @@ class USP_SelectStitchingPoint(Operator):
 
 #                print('I hit the left mouse')
                 
-                obj = bpy.data.objects['Grid']
+                obj = bpy.data.objects[MESH_NAME_USP]
                 bm = bmesh.from_edit_mesh(obj.data)
 
                 for v in bm.verts:
@@ -1136,8 +1166,10 @@ class USP_SelectStitchingPoint(Operator):
         if props.if_user_is_drawing:
             props.currentDrawing = []
             bpy.ops.object.mode_set(mode = 'EDIT') 
+            # enter vertex selection mode
+            bpy.context.tool_settings.mesh_select_mode = (True, False, False)
             
-            obj = bpy.data.objects['Grid']
+            obj = bpy.data.objects[MESH_NAME_USP]
             deselect_all_vert_in_mesh(obj)
             
             context.window_manager.modal_handler_add(self)
@@ -1160,9 +1192,9 @@ class USP_FinishCurrentDrawing(Operator):
         props = bpy.context.scene.sl_props
         
         if not props.if_curr_drawing_is_shown:
-            mesh = bpy.data.objects['Grid']
+            mesh = bpy.data.objects[MESH_NAME_USP]
             pts = get_vtx_pos(mesh, props.currentDrawing)
-            draw_stitching_line(pts, props.colTmp, "stitching_line_tmp", STROKE_SIZE, 'UnitStitchingLines')
+            draw_stitching_line(pts, props.colTmp, "stitching_line_tmp", STROKE_SIZE, COLL_NAME_USP_SL)
         
             props.if_curr_drawing_is_shown = True
 
@@ -1182,7 +1214,7 @@ class USP_FinishPattern(Operator):
         
         props = bpy.context.scene.sl_props
                 
-        mesh = bpy.data.objects['Grid']
+        mesh = bpy.data.objects[MESH_NAME_USP]
         
         usp = get_usp_from_saved_stitching_lines(props.savedStitchingLines, 
                                                  mesh, 
@@ -1215,9 +1247,9 @@ class USP_SaveCurrentStitchingLine(Operator):
         
 #        print(props.savedStitchingLines)
         
-        clean_objects_in_collection('UnitStitchingLines')
+        clean_objects_in_collection(COLL_NAME_USP_SL)
         
-        draw_saved_stitching_lines(context, 'UnitStitchingLines')
+        draw_saved_stitching_lines(context, COLL_NAME_USP_SL)
         
         props.if_curr_drawing_is_shown = True
         
@@ -1242,7 +1274,7 @@ class ExportUnitPattern(Operator):
         
         
         usp = get_usp_from_saved_stitching_lines(props.savedStitchingLines, 
-                                                 bpy.data.objects['Grid'], 
+                                                 bpy.data.objects[MESH_NAME_USP], 
                                                  context.scene.base_x,
                                                  context.scene.base_y)
         write_usp(file_name, usp)
@@ -1260,7 +1292,7 @@ class ImportUnitPattern(Operator):
     def execute(self, context):
         # refresh the drawing of the unit pattern
         # clean usp and fsp, don't touch the tmp collections
-        clear_coll = ['UnitSmockingPattern', 'UnitStitchingLines', 'SmockingPattern', 'StitchingLines']
+        clear_coll = [COLL_NAME_USP, COLL_NAME_USP_SL, COLL_NAME_FSP, COLL_NAME_FSP_SL]
         for c in clear_coll:
             clean_objects_in_collection(c)
         
@@ -1290,8 +1322,9 @@ class USP_CreateGrid(Operator):
     
 
     def execute(self, context):
-        clean_objects_in_collection('UnitSmockingPattern')
-        clean_objects_in_collection('StitchingLines')
+        for coll_name in [COLL_NAME_USP, COLL_NAME_USP_SL, COLL_NAME_FSP, COLL_NAME_FSP_SL]:
+            clean_objects_in_collection(coll_name)
+       
         
         base_x = context.scene.base_x
         base_y = context.scene.base_y
@@ -1302,7 +1335,7 @@ class USP_CreateGrid(Operator):
                           location=(0, base_y+0.5, 0), 
                           scale=(1,1,1),
                           obj_name='grid_annotation',
-                          coll_name='UnitSmockingPattern')
+                          coll_name=COLL_NAME_USP)
                           
         # clear the old drawings
         props = bpy.types.Scene.sl_props
@@ -1415,7 +1448,7 @@ class FSP_DeleteStitchingLines_start(Operator):
         bpy.ops.object.select_all(action='DESELECT')
         
         # select all stitching lines in the full pattern
-        for obj in bpy.data.collections['StitchingLines'].objects:
+        for obj in bpy.data.collections[COLL_NAME_FSP_SL].objects:
             obj.select_set(True)
             
         return {'FINISHED'}
@@ -1459,7 +1492,7 @@ class FSP_AddStitchingLines_draw_start(Operator):
         
             if event.type == 'LEFTMOUSE':
 
-                obj = bpy.data.objects['FullPattern']
+                obj = bpy.data.objects[MESH_NAME_FSP]
                 bm = bmesh.from_edit_mesh(obj.data)
 
                 for v in bm.verts:
@@ -1478,7 +1511,7 @@ class FSP_AddStitchingLines_draw_start(Operator):
         
         # remove the temporay stitching lines
         props = bpy.context.scene.sl_props
-        for obj in bpy.data.collections['StitchingLines'].objects:
+        for obj in bpy.data.collections[COLL_NAME_FSP_SL].objects:
             if 'tmp' in obj.name:
                 bpy.data.objects.remove(obj)
          
@@ -1490,8 +1523,9 @@ class FSP_AddStitchingLines_draw_start(Operator):
         if props.if_user_is_drawing:
             props.currentDrawing = []
             bpy.ops.object.mode_set(mode = 'EDIT') 
-            
-            obj = bpy.data.objects['FullPattern']
+            bpy.context.tool_settings.mesh_select_mode = (True, False, False)
+
+            obj = bpy.data.objects[MESH_NAME_FSP]
             deselect_all_vert_in_mesh(obj)
             
             context.window_manager.modal_handler_add(self)
@@ -1514,9 +1548,9 @@ class FSP_AddStitchingLines_draw_end(Operator):
         props = bpy.context.scene.sl_props
         
         if not props.if_curr_drawing_is_shown:
-            mesh = bpy.data.objects['FullPattern']
+            mesh = bpy.data.objects[MESH_NAME_FSP]
             pts = get_vtx_pos(mesh, props.currentDrawing)
-            draw_stitching_line(pts, props.colTmp, "stitching_line_tmp", STROKE_SIZE, 'StitchingLines')
+            draw_stitching_line(pts, props.colTmp, "stitching_line_tmp", STROKE_SIZE, COLL_NAME_FSP_SL)
         
             props.if_curr_drawing_is_shown = True
 
@@ -1534,9 +1568,9 @@ class FSP_AddStitchingLines_draw_add(Operator):
     
     def execute(self, context):
         
-        for obj in bpy.data.collections['StitchingLines'].objects:
+        for obj in bpy.data.collections[COLL_NAME_FSP_SL].objects:
             if 'tmp' in obj.name:
-                new_name = "new_stitching_line_" + str(len(bpy.data.collections['StitchingLines'].objects)-1)
+                new_name = "new_stitching_line_" + str(len(bpy.data.collections[COLL_NAME_FSP_SL].objects)-1)
                 bpy.data.grease_pencils[obj.name].name = new_name
                 obj.name = new_name
         
@@ -1574,16 +1608,37 @@ class FSP_EditMesh_start(Operator):
         
         bpy.ops.object.select_all(action='DESELECT')
         
-        bpy.data.objects['FullPattern'].select_set(True)
+        bpy.data.objects[MESH_NAME_FSP].select_set(True)
         
-        bpy.ops.object.mode_set(mode = 'EDIT') 
+        bpy.ops.object.mode_set(mode = 'EDIT')
+
+        select_mode = context.scene.fsp_edit_selection
+        if select_mode == "V":
+            bpy.context.tool_settings.mesh_select_mode = (True, False, False) 
+        elif select_mode == "E":
+            bpy.context.tool_settings.mesh_select_mode = (False, True, False)
+        elif select_mode == "F":
+            bpy.context.tool_settings.mesh_select_mode = (False, False, True) 
         
         return {'FINISHED'}
     
     
+
+
 class FSP_EditMesh_done(Operator):
     bl_idname = "object.fsp_edit_mesh_done"
     bl_label = "Finish the edits and update the smocking pattern"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        print('not done yet :/')
+        return {'FINISHED'}
+
+
+    
+class FSP_EditMesh_radial_grid(Operator):
+    bl_idname = "object.fsp_deform_regular_into_radial_grid"
+    bl_label = "Deform the pattern into radial grid"
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
@@ -1597,45 +1652,44 @@ def clean_tmp_collections():
 
     if_tmp_coll_exist = False
     for coll in bpy.data.collections:
-        if "TmpCollection" in coll.name:
+        if COLL_NAME_P1 in coll.name:
             if_tmp_coll_exist = True
 
     if if_tmp_coll_exist:
         # remove all the existing objects
-        for c in ['TmpCollection1', 'TmpCollection2', 
-                  'TmpStitchingLines1', 'TmpStitchingLines2']:
+        for c in [COLL_NAME_P1, COLL_NAME_P2, COLL_NAME_P1_SL, COLL_NAME_P2_SL]:
             clean_objects_in_collection(c)
 
     else:
-        # create new collections
-        for cid in range(1,3): 
-            coll_name = "TmpCollection" + str(cid)
-            stroke_coll_name = "TmpStitchingLines" + str(cid)
-            my_coll = bpy.data.collections.new(coll_name)
-            bpy.context.scene.collection.children.link(my_coll)
+        # create collections for P1 pattern
+        my_coll = bpy.data.collections.new(COLL_NAME_P1)
+        bpy.context.scene.collection.children.link(my_coll)
+        my_coll_strokes = bpy.data.collections.new(COLL_NAME_P1_SL)
+        my_coll.children.link(my_coll_strokes)
 
-            my_coll_strokes = bpy.data.collections.new(stroke_coll_name)
-            my_coll.children.link(my_coll_strokes)
+        # create collections for P2 pattern
+        my_coll = bpy.data.collections.new(COLL_NAME_P2)
+        bpy.context.scene.collection.children.link(my_coll)
+        my_coll_strokes = bpy.data.collections.new(COLL_NAME_P2_SL)
+        my_coll.children.link(my_coll_strokes)
             
 
 def clean_combined_collections():
     
     if_com_coll_exist = False
     for coll in bpy.data.collections:
-        if "CombineCollection" in coll.name:
+        if COLL_NAME_FSP_TMP in coll.name:
             if_com_coll_exist = True
 
     if if_com_coll_exist:
         # remove all the existing objects
-        for c in ['CombineCollection', 'CombineStitchingLines']:
+        for c in [COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL]:
             clean_objects_in_collection(c)
     else:
-        coll_name = 'CombineCollection' 
-        stroke_coll_name = 'CombineStitchingLines'
-        my_coll = bpy.data.collections.new(coll_name)
+        my_coll = bpy.data.collections.new(COLL_NAME_FSP_TMP)
         bpy.context.scene.collection.children.link(my_coll)
 
-        my_coll_strokes = bpy.data.collections.new(stroke_coll_name)
+        my_coll_strokes = bpy.data.collections.new(COLL_NAME_FSP_TMP_SL)
         my_coll.children.link(my_coll_strokes)
             
 
@@ -1673,20 +1727,15 @@ class FSP_CombinePatterns_load_first(Operator):
     bl_label = "Load the first pattern"
     bl_options = {'REGISTER', 'UNDO'}
     
-    def execute(self, context):
-        coll_name = "TmpCollection1"
-        stroke_coll_name = "TmpStitchingLines1"
-        pattern_name = 'Pattern01'
-        annotation_text = "Pattern 01"
-        
+    def execute(self, context):        
         clean_tmp_collections()
         clean_combined_collections()
 
 
         # load the exiting smocking pattern to my_coll
-        file_name = context.scene.file_import_p1
+        file_name = bpy.path.abspath(context.scene.file_import_p1)
         
-        fsp = read_obj_to_fsp(file_name, pattern_name, coll_name, stroke_coll_name, annotation_text)
+        fsp = read_obj_to_fsp(file_name, MESH_NAME_P1, COLL_NAME_P1, COLL_NAME_P1_SL, "Pattern 01")
 
         dt = bpy.types.Scene.solver_data
         dt.tmp_fsp1 = fsp # save the data to scene
@@ -1711,19 +1760,14 @@ class FSP_CombinePatterns_load_second(Operator):
     bl_label = "Load the second pattern"
     bl_options = {'REGISTER', 'UNDO'}
     
-    def execute(self, context):
-        coll_name = "TmpCollection2"
-        stroke_coll_name = "TmpStitchingLines2"
-        pattern_name = 'Pattern02'
-        annotation_text = "Pattern 02"
-        
+    def execute(self, context):        
         clean_tmp_collections()
         clean_combined_collections()
     
         # load the exiting smocking pattern to my_coll
-        file_name = context.scene.file_import_p2
+        file_name = bpy.path.abspath(context.scene.file_import_p2)
         
-        fsp = read_obj_to_fsp(file_name, pattern_name, coll_name, stroke_coll_name, annotation_text)
+        fsp = read_obj_to_fsp(file_name, MESH_NAME_P2, COLL_NAME_P2, COLL_NAME_P2_SL, "Pattern 02")
 
         dt = bpy.types.Scene.solver_data
         dt.tmp_fsp2 = fsp # save the data to scene
@@ -1746,11 +1790,6 @@ class FSP_CombinePatterns_assign_to_first(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        coll_name = "TmpCollection1"
-        stroke_coll_name = "TmpStitchingLines1"
-        pattern_name = 'Pattern01'
-        annotation_text = "Pattern 01"
-        
         clean_tmp_collections()
         clean_combined_collections()
 
@@ -1767,10 +1806,10 @@ class FSP_CombinePatterns_assign_to_first(Operator):
                  fsp.stitching_points_line_id,
                  fsp.stitching_points_patch_id,
                  fsp.stitching_points_vtx_id,
-                 pattern_name, 
-                 coll_name,
-                 stroke_coll_name,
-                 annotation_text)
+                 MESH_NAME_P1, 
+                 COLL_NAME_P1,
+                 COLL_NAME_P1_SL,
+                 "Pattern 01")
             fsp1_loc, fsp2_loc, _ = return_tmp_pattern_location()
 
             if dt.tmp_fsp2 != []:
@@ -1786,12 +1825,7 @@ class FSP_CombinePatterns_assign_to_second(Operator):
     bl_label = "Combined two patterns"
     bl_options = {'REGISTER', 'UNDO'}
     
-    def execute(self, context):
-        coll_name = "TmpCollection2"
-        stroke_coll_name = "TmpStitchingLines2"
-        pattern_name = 'Pattern02'
-        annotation_text = "Pattern 02"
-        
+    def execute(self, context):        
         clean_tmp_collections()
         clean_combined_collections()
 
@@ -1808,10 +1842,10 @@ class FSP_CombinePatterns_assign_to_second(Operator):
                  fsp.stitching_points_line_id,
                  fsp.stitching_points_patch_id,
                  fsp.stitching_points_vtx_id,
-                 pattern_name, 
-                 coll_name,
-                 stroke_coll_name,
-                 annotation_text)
+                 MESH_NAME_P2, 
+                 COLL_NAME_P2,
+                 COLL_NAME_P2_SL,
+                 "Pattern 02")
 
             fsp1_loc, fsp2_loc, _ = return_tmp_pattern_location()
 
@@ -1868,7 +1902,7 @@ class FSP_CombinePatterns(Operator):
 
 class FSP_CombinePatterns_assign_to_fsp(Operator):
     "Assign the combined pattern to current full smocking pattern"
-    bl_idname = "object.fsp_combine_patterns_assing_to_fsp"
+    bl_idname = "object.fsp_combine_patterns_assign_to_fsp"
     bl_label = "Assign combined pattern to full pattern"
     bl_options = {'REGISTER', 'UNDO'}
     
@@ -1885,9 +1919,9 @@ class FSP_CombinePatterns_assign_to_fsp(Operator):
                  fsp.stitching_points_line_id,
                  fsp.stitching_points_patch_id,
                  fsp.stitching_points_vtx_id,
-                 "FullPattern", 
-                 "SmockingPattern",
-                 "StitchingLines",
+                 MESH_NAME_FSP, 
+                 COLL_NAME_FSP,
+                 COLL_NAME_FSP_SL,
                  "Full Smocking Pattern")
             dt.full_smocking_pattern = fsp_new
 
@@ -1918,6 +1952,8 @@ class debug_panel(bpy.types.Panel):
         row.operator(debug_print.bl_idname, text="print data in scene", icon='GHOST_ENABLED')
         row = self.layout.row()
         row.operator(debug_func.bl_idname, text="test function", icon="GHOST_DISABLED")
+        row = self.layout.row()
+        row.prop(context.scene, 'if_highlight_button', toggle=False)
 
 
 
@@ -1955,7 +1991,8 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
 
         
         row = layout.row()
-        row.operator(USP_CreateGrid.bl_idname, text="Generate Grid", icon='GRID')
+        row.alert=context.scene.if_highlight_button
+        row.operator(USP_CreateGrid.bl_idname, text="Generate Grid", icon="GRID")
 
         
         row = layout.row()
@@ -1963,14 +2000,21 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
         row = layout.row()
         
         if(not context.window_manager.usp_drawing_started):
+
+            row.alert=context.scene.if_highlight_button
             row.operator(USP_SelectStitchingPoint.bl_idname, text="Draw", icon='GREASEPENCIL')
         else:
+            row.alert=context.scene.if_highlight_button
             row.operator(USP_FinishCurrentDrawing.bl_idname, text="Done", icon='CHECKMARK')
        
+
+        row.alert=context.scene.if_highlight_button
         row.operator(USP_SaveCurrentStitchingLine.bl_idname, text="Add", icon='ADD')
         
         row = layout.row()
-        row.operator(USP_FinishPattern.bl_idname, text="Finish Unit Pattern Design", icon='FUND')
+        row = layout.row()
+        row.alert=context.scene.if_highlight_button
+        row.operator(USP_FinishPattern.bl_idname, text="Finish Unit Pattern Design", icon='HEART')
         
          
         row = layout.row()
@@ -1980,7 +2024,8 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
         row.prop(context.scene, 'path_export')
         row = layout.row()  
         row.prop(context.scene, 'filename_export')
-        row = layout.row()  
+        row = layout.row() 
+        row.alert=context.scene.if_highlight_button
         row.operator(ExportUnitPattern.bl_idname, text="Export", icon='EXPORT')
         
                  
@@ -1998,7 +2043,8 @@ class UNITGRID_PT_load(UnitGrid_panel, bpy.types.Panel):
 #        layout.label(text= "Load an Existing Pattern")
         row = layout.row()
         row.prop(context.scene, 'path_import')
-        row = layout.row()  
+        row = layout.row()
+        row.alert=context.scene.if_highlight_button
         row.operator(ImportUnitPattern.bl_idname, text="Import", icon='IMPORT')
 
 
@@ -2044,12 +2090,14 @@ class FULLGRID_PT_tile(FullGrid_panel, bpy.types.Panel):
         row.prop(context.scene,'shift_x')
         row.prop(context.scene,'shift_y')
         
-        row = layout.row()
-        row = layout.row()
-        row.prop(context.scene, 'type_tile')
+        # layout.label(text= "Tiling Type:")
+        # row = layout.row()
+        # row.prop(context.scene, 'type_tile', expand=True)
         
         row = layout.row()
         row = layout.row()
+
+        row.alert=context.scene.if_highlight_button
         row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
 
 
@@ -2065,33 +2113,41 @@ class FULLGRID_PT_combine_patterns(FullGrid_panel, bpy.types.Panel):
         layout = self.layout
         layout.label(text= "Load from Saved Patterns")
         row = layout.row()
-        row.prop(context.scene, 'file_import_p1')
-        row.operator(FSP_CombinePatterns_load_first.bl_idname, text="Import", icon='IMPORT')
+        row.prop(context.scene, 'file_import_p1') 
+        row.alert=context.scene.if_highlight_button
+        row.operator(FSP_CombinePatterns_load_first.bl_idname, text="Import P1", icon='IMPORT')
         
         row = layout.row()
-        row.prop(context.scene, 'file_import_p2')
-        row.operator(FSP_CombinePatterns_load_second.bl_idname, text="Import", icon='IMPORT')
+        row.prop(context.scene, 'file_import_p2')      
+        row.alert=context.scene.if_highlight_button
+        row.operator(FSP_CombinePatterns_load_second.bl_idname, text="Import P2", icon='IMPORT')
 
         layout.label(text= "Assign Current Pattern")
         row = layout.row()
-        row.operator(FSP_CombinePatterns_assign_to_first.bl_idname, text="to P1", icon='FORWARD')
-        row.operator(FSP_CombinePatterns_assign_to_second.bl_idname, text="to P2", icon='FORWARD')
+        row.alert=context.scene.if_highlight_button
+        row.operator(FSP_CombinePatterns_assign_to_first.bl_idname, text="assign to P1", icon='FORWARD')
+        
+        row.alert=context.scene.if_highlight_button
+        row.operator(FSP_CombinePatterns_assign_to_second.bl_idname, text="assign to P2", icon='FORWARD')
 
 
 
         layout.label(text= "Parameters:")
         row = layout.row()
-        row.prop(context.scene, 'combine_direction')
+        row.prop(context.scene, 'combine_direction', expand=True)
         row.prop(context.scene, 'combine_space')
         row.prop(context.scene, 'combine_shift')
 
 
         
         row = layout.row()
+        row = layout.row()
+        row.alert=context.scene.if_highlight_button
         row.operator(FSP_CombinePatterns.bl_idname, text="Combined P1 and P2", icon="NODE_COMPOSITING")
 
         row = layout.row()
         row = layout.row()
+        row.alert=context.scene.if_highlight_button
         row.operator(FSP_CombinePatterns_assign_to_fsp.bl_idname, text="Assign to Full Smocking Pattern", icon="FORWARD")
 
 
@@ -2108,26 +2164,50 @@ class FULLGRID_PT_edit_pattern(FullGrid_panel, bpy.types.Panel):
         layout = self.layout
         layout.label(text= "Delete Stitching Lines")
         row = layout.row()
+        row.alert=context.scene.if_highlight_button
         row.operator(FSP_DeleteStitchingLines_start.bl_idname, text="Delete", icon="PANEL_CLOSE")
+        
+        row.alert=context.scene.if_highlight_button
         row.operator(FSP_DeleteStitchingLines_done.bl_idname, text="Done", icon="CHECKMARK")
         
         
         layout.label(text= "Add New Stitching Lines")
         row = layout.row()
+
         if(not context.window_manager.fsp_drawing_started):
+
+            row.alert=context.scene.if_highlight_button
             row.operator(FSP_AddStitchingLines_draw_start.bl_idname, text="Draw", icon='GREASEPENCIL')
         else:
+
+            row.alert=context.scene.if_highlight_button
             row.operator(FSP_AddStitchingLines_draw_end.bl_idname, text="Done", icon='CHECKMARK')
         
+        
+        row.alert=context.scene.if_highlight_button
         row.operator(FSP_AddStitchingLines_draw_add.bl_idname, text="Add", icon='ADD')
         row = layout.row()
-        row.operator(FSP_AddStitchingLines_draw_finish.bl_idname, text="Finish Adding Extra Stitching Lines", icon='FUND')
+
+        row.alert=context.scene.if_highlight_button
+        row.operator(FSP_AddStitchingLines_draw_finish.bl_idname, text="Finish Adding Extra Stitching Lines", icon='HEART')
         
         
         layout.label(text= "Edit the Smocking Grid")
         row = layout.row()
+        row.prop(context.scene, 'fsp_edit_selection', expand=True)
+        row.alert=context.scene.if_highlight_button
         row.operator(FSP_EditMesh_start.bl_idname, text="Edit", icon="EDITMODE_HLT")
+
+
+        row.alert=context.scene.if_highlight_button
         row.operator(FSP_EditMesh_done.bl_idname, text="Done", icon="CHECKMARK")
+
+        layout.label(text="Deform into Radial Grid")
+        row = layout.row()
+        row.prop(context.scene, 'radial_grid_radius')
+        row.operator(FSP_EditMesh_radial_grid.bl_idname, text="Deform", icon="MOD_SIMPLEDEFORM")
+        row.alert=context.scene.if_highlight_button
+        row.operator(FSP_CombinePatterns_assign_to_fsp.bl_idname, text="Assign to Full Smocking Pattern", icon="FORWARD")
         
         
         
@@ -2150,6 +2230,7 @@ class FULLGRID_PT_add_margin(FullGrid_panel, bpy.types.Panel):
         
         row = layout.row()
         row = layout.row()
+        row.alert=context.scene.if_highlight_button
         row.operator(FSP_AddMargin.bl_idname, text="Add Margin to Pattern", icon='OBJECT_DATAMODE')
 
 
@@ -2168,10 +2249,11 @@ class FULLGRID_PT_export_mesh(FullGrid_panel, bpy.types.Panel):
         row.prop(context.scene, 'filename_export_fullpattern')
         
         row = layout.row()
-        row.prop(context.scene, 'export_format')
+        row.prop(context.scene, 'export_format', expand=True)
         
         row = layout.row()
-        row = layout.row()
+        row = layout.row() 
+        row.alert=context.scene.if_highlight_button
         row.operator(FSP_Export.bl_idname, text="Export", icon='EXPORT')
 
         
@@ -2220,8 +2302,11 @@ _classes = [
     FSP_Export,
     FSP_DeleteStitchingLines_start,
     FSP_DeleteStitchingLines_done,
+    
     FSP_EditMesh_start,
     FSP_EditMesh_done,
+    FSP_EditMesh_radial_grid,
+
     FSP_AddStitchingLines_draw_start,
     FSP_AddStitchingLines_draw_end,
     FSP_AddStitchingLines_draw_add,    
@@ -2303,7 +2388,7 @@ if __name__ == "__main__":
 #        
 #        currentDrawing = [] # clear the previously selected stitching lines
 #        
-#        mesh = bpy.data.objects['Grid']
+#        mesh = bpy.data.objects[MESH_NAME_USP]
 #        select_one_object(mesh)
 
 #        bpy.ops.object.mode_set(mode = 'EDIT') 
