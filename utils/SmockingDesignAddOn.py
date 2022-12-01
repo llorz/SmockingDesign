@@ -66,10 +66,10 @@ PROPS = [
     ('filename_export', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
     ('path_import', bpy.props.StringProperty(subtype='FILE_PATH', name='File')),
     # for full grid (full smocking pattern)
-    ('num_x', bpy.props.FloatProperty(name='Xtile', default=3, min=1, max=20)),
-    ('num_y', bpy.props.FloatProperty(name='Ytile', default=3, min=1, max=20)),
-    ('shift_x', bpy.props.IntProperty(name='Xshift', default=0, min=-10, max=10)),
-    ('shift_y', bpy.props.IntProperty(name='Yshift', default=0, min=-10, max=10)),
+    ('num_x', bpy.props.IntProperty(name='Repeat along X-axis', default=3, min=1, max=20)),
+    ('num_y', bpy.props.IntProperty(name='Repeat along Y-axis', default=3, min=1, max=20)),
+    ('shift_x', bpy.props.IntProperty(name='Shift along X-axis', default=0, min=-10, max=10)),
+    ('shift_y', bpy.props.IntProperty(name='Shift along Y-axis', default=0, min=-10, max=10)),
 #    ('type_tile', bpy.props.EnumProperty(items = [("regular", "regular", "tile in a regular grid"), ("radial", "radial", "tile in a radial grid")], name="Type", default="regular")),
     ('margin_top', bpy.props.FloatProperty(name='Top', default=0, min=0, max=10)),
     ('margin_bottom', bpy.props.FloatProperty(name='Bottom', default=0, min=0, max=10)),
@@ -82,17 +82,37 @@ PROPS = [
     # FSP: combine two patterns
     ('file_import_p1', bpy.props.StringProperty(subtype='FILE_PATH', name='P1 path')),
     ('file_import_p2', bpy.props.StringProperty(subtype='FILE_PATH', name='P2 path')),
-    ('combine_direction', bpy.props.EnumProperty(items = [("x", "", "along x axis", 'EVENT_X',0), ("y", "", "along y axis",'EVENT_Y',1)], name="Axis", default="x")),
-    ('combine_space', bpy.props.IntProperty(name='space', default=2, min=1, max=20)),
-    ('combine_shift', bpy.props.IntProperty(name='shift', default=0, min=-20, max=20)),
-    ('fsp_edit_selection', bpy.props.EnumProperty(items= (('V', '', 'move vertices', 'VERTEXSEL', 0),    
-                                                          ('E', '', 'move edges', 'EDGESEL', 1),    
-                                                          ('F', '', 'add/delete faces', 'FACESEL', 2)) ,  
+    ('combine_direction', bpy.props.EnumProperty(items = [("x", "horizontally", "along x axis", 'EVENT_H',0), 
+                                                          ("y", "vertically", "along y axis",'EVENT_V',1)], 
+                                                          name="Combine", default="x")),
+    ('combine_space', bpy.props.IntProperty(name='Spacing', default=2, min=1, max=20)),
+    ('combine_shift', bpy.props.IntProperty(name='Shift', default=0, min=-20, max=20)),
+    ('fsp_edit_selection', bpy.props.EnumProperty(items= (('V', 'VERT', 'move vertices', 'VERTEXSEL', 0),    
+                                                          ('E', 'EDGE', 'move edges', 'EDGESEL', 1),    
+                                                          ('F', 'FACE', 'add/delete faces', 'FACESEL', 2)) ,  
                                    default="F",
-                                   name = "Edit Full Smocking Pattern",  
+                                   name = "Select",  
                                    description = "")),
-    ('radial_grid_ratio', bpy.props.FloatProperty(name='ratio', default=0.9, min=0.1, max=1)) 
+    ('radial_grid_ratio', bpy.props.FloatProperty(name='ratio', default=0.9, min=0.1, max=1)), 
+    # Smocked graph
 
+    ('graph_select_type', bpy.props.EnumProperty(items= (('V', 'VERT', 'highlight vertices', 'VERTEXSEL', 0),    
+                                                          ('E', 'EDGE', 'highlight edges', 'EDGESEL', 1)),    
+                                   default="V",
+                                   name = "Select",  
+                                   description = "")),
+    ('graph_highlight_type', bpy.props.EnumProperty(items= (('all', 'all', 'show all vtx/edge'),
+                                                      ('underlay', 'underlay', 'highlight underlay'),    
+                                                      ('pleat', 'pleat', 'hightlight pleat')) ,  
+                                   default="all",
+                                   name = "Show",  
+                                   description = "")),
+    ('graph_init_type', bpy.props.EnumProperty(items= (('center', 'center', 'center of stitching lines'),    
+                                                      ('random', 'random', 'random initialization')) ,  
+                                   default="center",
+                                   name = "Initialization",  
+                                   description = "Initialization"))
+    
     ]
     
     
@@ -121,6 +141,8 @@ class SolverData():
     tmp_fsp1 = []
     tmp_fsp2 = []
     tmp_fsp = []
+
+
 # ========================================================================
 #                         classes for the solver
 # ========================================================================
@@ -1593,10 +1615,14 @@ class FSP_Export(Operator):
         
         save_dir = bpy.path.abspath(context.scene.path_export_fullpattern)
         file_name = context.scene.filename_export_fullpattern + context.scene.export_format
-        
-        fsp = dt.full_smocking_pattern
-        filepath = save_dir + file_name
-        write_fsp_to_obj(fsp, filepath)
+
+        if context.scene.export_format == ".obj":
+            
+            fsp = dt.full_smocking_pattern
+            filepath = save_dir + file_name
+            write_fsp_to_obj(fsp, filepath)
+        else:
+            print('not done yet:/')
 
         return {'FINISHED'}
     
@@ -2064,6 +2090,9 @@ class debug_panel(bpy.types.Panel):
     
     def draw(self, context):
         layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False  # No animation.
+
         c = layout.column()
         row = c.row()
         row.operator(debug_clear.bl_idname, text="clear everything", icon='QUIT')
@@ -2102,31 +2131,27 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
     def draw(self, context):
         props = context.scene.sl_props
         layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False  # No animation.
+
         
         layout.label(text= "Generate A Grid for Drawing:")
-        c = layout.column()
-        row = c.row()
-        split = row.split(factor=1/4)
-        c = split.column()
-        c.prop(context.scene,'base_x')
+        box = layout.box()
+        box.row()
+        box.row().prop(context.scene,'base_x')
+        box.row().prop(context.scene,'base_y')
+
+        row = box.row()
+        row.alert=context.scene.if_highlight_button
+        row.operator(USP_CreateGrid.bl_idname, text="Generate Grid", icon="GRID")
+        box.row()
         
-
-        split = split.split(factor=1/3)
-        c = split.column()
-        c.prop(context.scene,'base_y')
-
-
-        c = split.column()
-        c.alert=context.scene.if_highlight_button
-        c.operator(USP_CreateGrid.bl_idname, text="Generate Grid", icon="GRID")
-
         
-        row = layout.row()
         layout.label(text= "Draw A Stitching Line")
-        row = layout.row()
-        
+        box = layout.box()
+        box.row()
+        row = box.row()
         if(not context.window_manager.usp_drawing_started):
-
             row.alert=context.scene.if_highlight_button
             row.operator(USP_SelectStitchingPoint.bl_idname, text="Draw", icon='GREASEPENCIL')
         else:
@@ -2137,22 +2162,22 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
         row.alert=context.scene.if_highlight_button
         row.operator(USP_SaveCurrentStitchingLine.bl_idname, text="Add", icon='ADD')
         
-        row = layout.row()
-        row = layout.row()
+        box.row()
+        row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(USP_FinishPattern.bl_idname, text="Finish Unit Pattern Design", icon='HEART')
+        box.row()
         
          
-        row = layout.row()
-        row = layout.row()        
         layout.label(text= "Export Current Unit Smocking Pattern")
-        row = layout.row()  
-        row.prop(context.scene, 'path_export')
-        row = layout.row()  
-        row.prop(context.scene, 'filename_export')
-        row = layout.row() 
+        box = layout.box()
+        box.row()  
+        box.row().prop(context.scene, 'path_export')
+        box.row().prop(context.scene, 'filename_export')
+        row = box.row() 
         row.alert=context.scene.if_highlight_button
         row.operator(ExportUnitPattern.bl_idname, text="Export", icon='EXPORT')
+        box.row()
         
                  
 
@@ -2166,13 +2191,17 @@ class UNITGRID_PT_load(UnitGrid_panel, bpy.types.Panel):
     
     def draw(self, context):
         layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False  # No animation.
+
 #        layout.label(text= "Load an Existing Pattern")
-        row = layout.row()
-        row.prop(context.scene, 'path_import')
-        row = layout.row()
+        box = layout.box()
+        box.row()
+        box.row().prop(context.scene, 'path_import')
+        row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(ImportUnitPattern.bl_idname, text="Import", icon='IMPORT')
-
+        box.row()
 
 
 
@@ -2206,26 +2235,25 @@ class FULLGRID_PT_tile(FullGrid_panel, bpy.types.Panel):
     def draw(self, context):
         
         layout = self.layout
-        layout.label(text= "Repeat the unit pattern:")
-        row = layout.row()
-        row.prop(context.scene,'num_x')
-        row.prop(context.scene,'num_y')
-        
-        layout.label(text= "Shift the unit pattern:")
-        row = layout.row()
-        row.prop(context.scene,'shift_x')
-        row.prop(context.scene,'shift_y')
+        layout.use_property_split = True
+        layout.use_property_decorate = False  # No animation.
+
+        box = layout.box()
+        box.row()
+        box.row().prop(context.scene,'num_x')
+        box.row().prop(context.scene,'num_y')
+    
+        box.row().prop(context.scene,'shift_x')
+        box.row().prop(context.scene,'shift_y')
         
         # layout.label(text= "Tiling Type:")
         # row = layout.row()
         # row.prop(context.scene, 'type_tile', expand=True)
         
-        row = layout.row()
-        row = layout.row()
-
+        row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
-
+        box.row()
 
 
 
@@ -2237,32 +2265,51 @@ class FULLGRID_PT_combine_patterns(FullGrid_panel, bpy.types.Panel):
     
     def draw(self, context):
         layout = self.layout
-        layout.label(text= "Load from Saved Patterns")
+        layout.use_property_split = True
+        layout.use_property_decorate = False  # No animation.
+
+        layout.label(text= "Get Two Smocking Patterns")
         row = layout.row()
-        row.prop(context.scene, 'file_import_p1') 
+
+        box = row.box()
+        box.label(text="Load from Saved Files")
+
+        col = box.column(align=True)
+        split = col.split(factor=0.7)
+        row = split.row()
+        row.prop(context.scene, 'file_import_p1')
+        row = split.split() 
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_CombinePatterns_load_first.bl_idname, text="Import P1", icon='IMPORT')
         
-        row = layout.row()
+        col = box.column(align=True)
+        split = col.split(factor=0.7)
+        row = split.row()
         row.prop(context.scene, 'file_import_p2')      
+        row = split.split()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_CombinePatterns_load_second.bl_idname, text="Import P2", icon='IMPORT')
 
-        layout.label(text= "Assign Current Pattern")
-        row = layout.row()
+        box.label(text= "Assign Current Pattern")
+        row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_CombinePatterns_assign_to_first.bl_idname, text="assign to P1", icon='FORWARD')
-        
+
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_CombinePatterns_assign_to_second.bl_idname, text="assign to P2", icon='FORWARD')
+        box.row()
 
+        
 
-
-        layout.label(text= "Parameters:")
+        layout.label(text= "Parameters")
         row = layout.row()
-        row.prop(context.scene, 'combine_direction', expand=True)
-        row.prop(context.scene, 'combine_space')
-        row.prop(context.scene, 'combine_shift')
+        box = row.box()
+        box.row()
+        box.row().prop(context.scene, 'combine_direction', expand=True)
+        box.prop(context.scene, 'combine_space')
+        box.prop(context.scene, 'combine_shift')
+        box.row()
+        
 
 
         
@@ -2288,56 +2335,72 @@ class FULLGRID_PT_edit_pattern(FullGrid_panel, bpy.types.Panel):
     
     def draw(self, context):
         layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False  # No animation.
+
+
         layout.label(text= "Delete Stitching Lines")
-        row = layout.row()
+        box = layout.box()
+        box.row()
+        row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_DeleteStitchingLines_start.bl_idname, text="Delete", icon="PANEL_CLOSE")
         
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_DeleteStitchingLines_done.bl_idname, text="Done", icon="CHECKMARK")
-        
+        box.row()
         
         layout.label(text= "Add New Stitching Lines")
-        row = layout.row()
+        box = layout.box()
+        box.row()
+        row = box.row()
 
         if(not context.window_manager.fsp_drawing_started):
-
             row.alert=context.scene.if_highlight_button
             row.operator(FSP_AddStitchingLines_draw_start.bl_idname, text="Draw", icon='GREASEPENCIL')
         else:
-
             row.alert=context.scene.if_highlight_button
             row.operator(FSP_AddStitchingLines_draw_end.bl_idname, text="Done", icon='CHECKMARK')
         
         
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_AddStitchingLines_draw_add.bl_idname, text="Add", icon='ADD')
-        row = layout.row()
+        
 
+        row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_AddStitchingLines_draw_finish.bl_idname, text="Finish Adding Extra Stitching Lines", icon='HEART')
+        box.row()
         
         
         layout.label(text= "Edit the Smocking Grid")
-        row = layout.row()
-        row.prop(context.scene, 'fsp_edit_selection', expand=True)
+        box = layout.box()
+        box.row()
+        box.row().prop(context.scene, 'fsp_edit_selection', expand=True)
+
+        row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_EditMesh_start.bl_idname, text="Edit", icon="EDITMODE_HLT")
 
 
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_EditMesh_done.bl_idname, text="Done", icon="CHECKMARK")
+        box.row()
+
 
         layout.label(text="Deform into Radial Grid")
-        row = layout.row()
-        row.prop(context.scene, 'radial_grid_ratio')
-
+        box = layout.box()
+        box.row()
+        
+        box.row().prop(context.scene, 'radial_grid_ratio')
+        row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_EditMesh_radial_grid.bl_idname, text="Deform", icon="MOD_SIMPLEDEFORM")
 
-        row = layout.row()
+        row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_confirm_tmp_fsp.bl_idname, text="Assign to Full Smocking Pattern", icon="FORWARD")
+        box.row()
         
         
         
@@ -2350,45 +2413,51 @@ class FULLGRID_PT_add_margin(FullGrid_panel, bpy.types.Panel):
     def draw(self, context):
         
         layout = self.layout
-        row = layout.row()
-        row.prop(context.scene,'margin_top')
-        row.prop(context.scene,'margin_bottom')
-        row = layout.row()
-        row.prop(context.scene,'margin_left')
-        row.prop(context.scene,'margin_right')
+        layout.use_property_split = True
+        layout.use_property_decorate = False  # No animation.
+
+        box = layout.box()
+        box.row()
+        box.row().prop(context.scene,'margin_top')
+        box.row().prop(context.scene,'margin_bottom')
+        box.row().prop(context.scene,'margin_left')
+        box.row().prop(context.scene,'margin_right')
         
         
-        row = layout.row()
-        row = layout.row()
+        row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_AddMargin.bl_idname, text="Add Margin to Pattern (Preview)", icon='OBJECT_DATAMODE')
 
-        row = layout.row()
+        row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_confirm_tmp_fsp.bl_idname, text="Assign to Full Smocking Pattern", icon="FORWARD")
+        box.row()
         
+
 
 class FULLGRID_PT_export_mesh(FullGrid_panel, bpy.types.Panel):
     bl_label = "Export Current Pattern to Mesh"
     bl_parent_id = 'SD_PT_full_grid_main'
     
     def draw(self, context):
+        # TODO: the alignment is off :/ dunno how to fix it
         layout = self.layout
-        row = layout.row()  
-        row.prop(context.scene, 'path_export_fullpattern')
+        layout.use_property_split = True
+        layout.use_property_decorate = False  # No animation.
 
-       
-        row = layout.row()
-        row.prop(context.scene, 'filename_export_fullpattern')
+
+        box = layout.box()
+        box.row()
         
-        row = layout.row()
-        row.prop(context.scene, 'export_format', expand=True)
+        box.row().prop(context.scene, 'path_export_fullpattern')
+        box.row().prop(context.scene, 'filename_export_fullpattern')
+        box.row().prop(context.scene, 'export_format', expand=True)
         
-        row = layout.row()
-        row = layout.row() 
+        row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_Export.bl_idname, text="Export", icon='EXPORT')
-
+        box.row()
+        
         
 class SmockedGraph_panel(bpy.types.Panel):
     bl_label = "Smocked Graph"
@@ -2400,8 +2469,24 @@ class SmockedGraph_panel(bpy.types.Panel):
    
     def draw(self, context):
         layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False  # No animation.
+
+        layout.label(text="Show the Smocked Graph")
+        box = layout.row().box()
+        box.row()
+        box.row().prop(context.scene, "graph_select_type", expand=True)
+        box.row().prop(context.scene, "graph_highlight_type", expand=True)
+        box.row()
         
-    
+        
+        layout.label(text="Embed the Smocked Graph")
+        box = layout.row().box()
+        box.label(text="Optimization Parameters")
+        box.row().prop(context.scene, "graph_init_type", expand=True)
+        box.row()
+        
+        
         
 # ========================================================================
 #                          Registration
