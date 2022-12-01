@@ -105,13 +105,33 @@ PROPS = [
                                                       ('underlay', 'underlay', 'highlight underlay'),    
                                                       ('pleat', 'pleat', 'hightlight pleat')) ,  
                                    default="all",
-                                   name = "Show",  
+                                   name = "Highlight",  
                                    description = "")),
-    ('graph_init_type', bpy.props.EnumProperty(items= (('center', 'center', 'center of stitching lines'),    
+    ('opti_init_type', bpy.props.EnumProperty(items= (('center', 'center', 'center of stitching lines'),    
                                                       ('random', 'random', 'random initialization')) ,  
                                    default="center",
                                    name = "Initialization",  
-                                   description = "Initialization"))
+                                   description = "Initialization")),
+    ('opti_init_pleat_height', bpy.props.FloatProperty(name="Initial Pleat Height", default=1, min=0.1, max=5)),
+    
+    ('opti_dist_preserve', bpy.props.EnumProperty(items= (('exact', 'exact', 'exact'),    
+                                                      ('approx', 'approximation', 'approximation')) ,  
+                                   default="exact",
+                                   name = "Constraints",  
+                                   description = "Constraints")),
+
+    ('opti_if_add_delaunay', bpy.props.BoolProperty(name="Add Constraints from Delaunay", default=False)),
+
+    ('opti_mtd', bpy.props.EnumProperty(items= (('Newton', 'Newton-CG', 'Newton Conjugated Gradient'),    
+                                                ('BFGS', 'BFGS', 'BFGS')) ,  
+                                   default="Newton",
+                                   name = "Solver",  
+                                   description = "Solver")),
+
+    ('opti_tol', bpy.props.FloatProperty(name="Tolerance", default=1e-3, min=1e-12, max=0.1)),
+    ('opti_maxIter', bpy.props.IntProperty(name="MaxIter", default=100, min=1, max=100000)),
+    ('opti_if_display', bpy.props.BoolProperty(name="Print convergence messages", default=True))
+
     
     ]
     
@@ -187,7 +207,7 @@ class debug_print(Operator):
             
         else:
             print('Import the smokcing pattern first')
-        
+            
                 
         return {'FINISHED'}
 
@@ -201,8 +221,76 @@ class debug_func(Operator):
     def execute(self, context):
         print('debugging...')
         
-        
+        dt = bpy.types.Scene.solver_data
 
+        fsp = dt.full_smocking_pattern
+        # # construct smocked graph
+        # fsp_vid_underlay = fsp.stitching_points_vtx_id
+        # fsp_vid_pleat = np.setdiff1d(range(fsp.nv), fsp_vid_underlay)
+
+        # # use dictionary to record the vertex correspondences between the 
+        # # smocked graph (sg) and the smocking pattern (sp)
+        # dict_sp2sg = {}
+        # dict_sg2sp = {}
+
+        # nl = fsp.num_stitching_lines()
+        
+        # # each stiching line in SP becomes a single node in SG
+        # for lid in range(nl):
+        #     vtxID = fsp.get_vid_in_stitching_line(lid)
+        #     dict_sg2sp[lid] = vtxID
+
+        #     for vid in vtxID:
+        #         dict_sp2sg[vid] = lid
+
+        # count = nl
+        # for vid in fsp_vid_pleat:
+        #     dict_sp2sg[vid] = count
+        #     dict_sg2sp[count] = [vid]
+        #     count += 1
+        
+        # # by construction we know
+        # # the first nl vertices are underlay vertices
+        # vid_underlay = np.array(range(nl))
+        # # the rest are pleat vertices
+        # vid_pleat = np.array(range(nl, len(dict_sg2sp)))
+
+
+        # # vtx pos of the smocked graph
+        
+        # V = fsp.V
+
+        # V_sg = np.zeros((len(dict_sg2sp),3))
+
+        # for vid in range(len(dict_sg2sp)):
+        #     vtx = dict_sg2sp[vid]
+        #     if len(vtx) > 1:
+        #         coord = np.mean(V[vtx, :], axis=0)
+        #     else:
+        #         coord = V[vtx, :]
+        #     V_sg[vid, 0:2] = coord    
+            
+
+        # # find the edges
+        # E = fsp.E
+        # E_sg = []
+        # for e in E:
+        #     E_sg.append([dict_sp2sg[e[0]], dict_sp2sg[e[1]]])
+
+        # E_sg = sort_edge(E_sg)
+        
+        # # category the edges
+        # tmp = np.array(E_sg[:,0] < nl).astype(int) + np.array(E_sg[:, 1] < nl).astype(int)
+        # print(tmp)
+        
+        # eid_underlay = np.array(find_index_in_list(tmp, 2))
+        # eid_pleat = np.setdiff1d(range(len(E_sg)), eid_underlay)
+        # print(eid_underlay)
+        # print(eid_pleat)
+        # # print(E_sg[eid_underlay,:])
+
+        SG = SmockedGraph(fsp)
+        print(SG.nv, SG.ne)
         return {'FINISHED'}
 
 
@@ -212,6 +300,30 @@ class debug_func(Operator):
 # ========================================================================
 #                         classes for the solver
 # ========================================================================
+
+
+
+
+class SmockedGraph():
+    """the smocked graph from the full smocking pattern (fsp)"""
+
+    def __init__(self, fsp, init_type='center'):
+        """extract the smocked graph from the fsp"""
+        
+        self.V, \
+        self.E, \
+        self.dict_sg2sp, \
+        self.dict_sp2sg, \
+        self.vid_underlay, \
+        self.vid_pleat, \
+        self.eid_underlay, \
+        self.eid_pleat = extract_smocked_graph_from_full_smocking_pattern(fsp, init_type ='center')
+
+        self.nv = len(self.V)
+        self.ne = len(self.E)
+        self.full_smocking_pattern = fsp
+
+
 
 class UnitSmockingPattern():
     """create a unit pattern"""
@@ -273,6 +385,9 @@ class SmockingPattern():
         self.V = V # can be 2D or 3D vtx positions
         self.F = F
         self.E = E
+        self.nv = len(V)
+        self.nf = len(F)
+        self.ne = len(E)
         
         # the stitching points: in 2D/3D positions
         self.stitching_points = np.array(stitching_points)
@@ -1280,6 +1395,73 @@ def deform_fsp_into_radial_grid(fsp, ratio):
         return fsp_new
 
 
+
+
+def extract_smocked_graph_from_full_smocking_pattern(fsp, init_type = 'center'):
+    fsp_vid_underlay = fsp.stitching_points_vtx_id
+    fsp_vid_pleat = np.setdiff1d(range(fsp.nv), fsp_vid_underlay)
+
+    # use dictionary to record the vertex correspondences between the 
+    # smocked graph (sg) and the smocking pattern (sp)
+    dict_sp2sg = {}
+    dict_sg2sp = {}
+
+    nl = fsp.num_stitching_lines()
+    
+    # each stiching line in SP becomes a single node in SG
+    for lid in range(nl):
+        vtxID = fsp.get_vid_in_stitching_line(lid)
+        dict_sg2sp[lid] = vtxID
+
+        for vid in vtxID:
+            dict_sp2sg[vid] = lid
+
+    count = nl
+    for vid in fsp_vid_pleat:
+        dict_sp2sg[vid] = count
+        dict_sg2sp[count] = [vid]
+        count += 1
+    
+    # by construction we know
+    # the first nl vertices are underlay vertices
+    vid_underlay = np.array(range(nl))
+    # the rest are pleat vertices
+    vid_pleat = np.array(range(nl, len(dict_sg2sp)))
+
+
+    # vtx pos of the smocked graph
+    V = fsp.V
+    V_sg = np.zeros((len(dict_sg2sp),3))
+
+    for vid in range(len(dict_sg2sp)):
+        vtx = dict_sg2sp[vid]
+        if len(vtx) > 1:
+            if init_type == 'center':
+                coord = np.mean(V[vtx, :], axis=0)
+            else:
+                print('TODO: use random initialization')
+        else:
+            coord = V[vtx, :]
+        V_sg[vid, 0:2] = coord    
+        
+
+    # find the edges
+    E = fsp.E
+    E_sg = []
+    for e in E:
+        E_sg.append([dict_sp2sg[e[0]], dict_sp2sg[e[1]]])
+
+    E_sg = sort_edge(E_sg)
+    
+    # category the edges
+    tmp = np.array(E_sg[:,0] < nl).astype(int) + np.array(E_sg[:, 1] < nl).astype(int)
+    eid_underlay = np.array(find_index_in_list(tmp, 2))
+    eid_pleat = np.setdiff1d(range(len(E_sg)), eid_underlay)
+
+    return V_sg, E_sg, dict_sg2sp, dict_sp2sg, vid_underlay, vid_pleat, eid_underlay, eid_pleat
+
+
+
 # ========================================================================
 #                          Functions for UIs
 # ========================================================================
@@ -2076,6 +2258,28 @@ class FSP_confirm_tmp_fsp(Operator):
 
 
 
+class SG_draw_graph(Operator):
+    bl_idname = "object.sg_draw_graph"
+    bl_label = "Draw the smocked graph"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        print('Not done yet"/')
+        return {'FINISHED'}
+
+
+class SG_embed_graph(Operator):
+    bl_idname = "object.sg_embed_graph"
+    bl_label = "Embed the smocked graph"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        print('Not done yet"/')
+        return {'FINISHED'}
+
+
+
+
 # ========================================================================
 #                          Draw the Panel
 # ========================================================================
@@ -2477,13 +2681,31 @@ class SmockedGraph_panel(bpy.types.Panel):
         box.row()
         box.row().prop(context.scene, "graph_select_type", expand=True)
         box.row().prop(context.scene, "graph_highlight_type", expand=True)
+        row = box.row()
+        row.alert=context.scene.if_highlight_button
+        row.operator(SG_draw_graph.bl_idname, text='Visualize the Smocked Graph', icon="GREASEPENCIL")
         box.row()
         
         
         layout.label(text="Embed the Smocked Graph")
         box = layout.row().box()
         box.label(text="Optimization Parameters")
-        box.row().prop(context.scene, "graph_init_type", expand=True)
+        box.row().prop(context.scene, "opti_init_type", expand=True)
+        box.row().prop(context.scene, "opti_init_pleat_height")
+        box.row().prop(context.scene, "opti_dist_preserve", expand=True)
+        box.row().prop(context.scene, "opti_if_add_delaunay", expand=True)
+        box.row().prop(context.scene, "opti_mtd")
+        box.row().prop(context.scene, "opti_tol", slider=False)
+        box.row().prop(context.scene, "opti_maxIter", slider=False)
+        box.row().prop(context.scene, "opti_if_display")
+        
+
+
+
+
+        row = box.row()
+        row.alert=context.scene.if_highlight_button
+        row.operator(SG_embed_graph.bl_idname, text='Embed the Smocked Graph', icon="GREASEPENCIL")
         box.row()
         
         
@@ -2536,6 +2758,8 @@ _classes = [
     FSP_CombinePatterns,
     FSP_confirm_tmp_fsp,
     
+    SG_draw_graph,
+    SG_embed_graph,
     
     UNITGRID_PT_main,
     UNITGRID_PT_create,
