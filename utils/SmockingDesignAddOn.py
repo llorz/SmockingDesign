@@ -20,7 +20,13 @@ import numpy as np
 from bpy.types import Operator
 from bpy.types import (Panel, Operator)
 import os
+from scipy.spatial.distance import cdist
 
+# install scipy to blender's python
+# ref: https://blender.stackexchange.com/questions/5287/using-3rd-party-python-modules
+# cd /path/to/blender/python/bin
+# ./python -m ensurepip
+# ./python -m pip install scipy
 
 # ========================================================================
 #                          Global Variables
@@ -30,8 +36,11 @@ col_blue = (76/255.0, 201/255.0,240/255.0)
 col_yellow = (254/255.0, 228/255.0, 64/255.0)
 
 STROKE_SIZE = 10 # to plot the stiching lines
+# align P1/P2/P1_P2_COMBINED
 LAYOUT_Y_SHIFT = 3
 LAYOUT_X_SHIFT = 2
+# align USP FSP
+LAYOUT_USP_FSP_SPACE = 2
 
 # collection names
 COLL_NAME_USP = "UnitSmockingPattern"
@@ -46,6 +55,10 @@ COLL_NAME_P2_SL = "FSP2_SL"
 COLL_NAME_FSP_TMP = "FSP_tmp"
 COLL_NAME_FSP_TMP_SL = "FSP_tmp_SL"
 
+
+COLL_NAME_SG = "SmockedGraph"
+COLL_NAME_SG_SL = "SmockedGraphStrokes"
+MESH_NAME_SG = "Graph"
 
 MESH_NAME_USP = "Grid"
 MESH_NAME_FSP = "FullPattern"
@@ -290,7 +303,9 @@ class debug_func(Operator):
         # # print(E_sg[eid_underlay,:])
 
         SG = SmockedGraph(fsp)
-        print(SG.nv, SG.ne)
+        SG.info()
+        SG.plot()
+        print( SG.return_max_dist_constraint_for_vtx_pair(1,2) )
         return {'FINISHED'}
 
 
@@ -302,7 +317,7 @@ class debug_func(Operator):
 # ========================================================================
 
 
-
+#----------------------- Smocked Graph Class --------------------------------
 
 class SmockedGraph():
     """the smocked graph from the full smocking pattern (fsp)"""
@@ -312,6 +327,7 @@ class SmockedGraph():
         
         self.V, \
         self.E, \
+        self.F, \
         self.dict_sg2sp, \
         self.dict_sp2sg, \
         self.vid_underlay, \
@@ -322,6 +338,57 @@ class SmockedGraph():
         self.nv = len(self.V)
         self.ne = len(self.E)
         self.full_smocking_pattern = fsp
+
+
+
+    def return_max_dist_constraint_for_vtx_pair(self, vid1, vid2):
+        """Compute the maximum distance between the two nodes"""
+
+        fsp = self.full_smocking_pattern
+        vid1_sp = self.dict_sg2sp[vid1]
+        vid2_sp = self.dict_sg2sp[vid2]
+        d = cdist(fsp.V[vid1_sp, :], fsp.V[vid2_sp, :])
+        return np.min(d)
+
+    def return_max_dist_constraint_for_edge(self, eid):
+        return self.return_max_dist_constraint_for_vtx_pair(self.E[eid, 0], self.E[eid, 1])
+
+
+    def is_vtx_pleat(self, vid):
+        return vid in self.vid_pleat
+
+    def is_vtx_underlay(self, vid):
+        return vid in self.vid_underlay
+
+    def is_edge_pleat(self, eid):
+        return eid in self.eid_pleat
+
+    def is_edge_underlay(self, eid):
+        return eid in self.eid_underlay
+
+    def info(self):
+        print('------------------------------')
+        print('Smocked Graph:')
+        print('------------------------------')
+        print('No. vertices %d : %d underlay + %d pleat' % (self.nv, len(self.vid_underlay), len(self.vid_pleat) ) )
+        print('No. edges %d : %d underlay + %d pleat' % (self.ne, len(self.eid_underlay), len(self.eid_pleat) ) )
+        
+        
+    def plot(self, location=(0,0)):
+        print('not done yet')
+        initialize_pattern_collection(COLL_NAME_SG, COLL_NAME_SG_SL)        
+        construct_object_from_mesh_to_scene(self.V, self.F, MESH_NAME_SG, COLL_NAME_SG)
+        mesh = bpy.data.objects[MESH_NAME_SG]
+        
+        mesh.scale = (1, 1, 1)
+        mesh.location = (10 + location[0]-min(self.V[:,0]), location[1]-max(self.V[:,1])-LAYOUT_Y_SHIFT, 0)
+        mesh.show_axis = False
+        mesh.show_wire = True
+        mesh.display_type = 'WIRE'
+        select_one_object(mesh)
+
+
+#----------------------- Unit Smocking Pattern Class ----------------------------
 
 
 
@@ -345,21 +412,35 @@ class UnitSmockingPattern():
         pids = find_index_in_list(self.stitching_points_line_id, lid)
         pos = np.array(self.stitching_points)[pids, :]
         
-        return pos    
+        return pos
+
+    def get_vtx_in_stitching_line(self, lid):
+        return np.array(self.stitching_lines[lid])
     
-    def plot(self):
-        obj = generate_grid_for_unit_pattern(self.base_x, self.base_y)
+    def plot(self, location=(0,0)):
         
+        initialize_pattern_collection(COLL_NAME_USP, COLL_NAME_USP_SL)
+
+        generate_grid_for_unit_pattern(self.base_x, self.base_y)
+    
+        mesh = bpy.data.objects[MESH_NAME_USP]
+    
+        mesh.location = (location[0], location[1], 0)
+
         add_text_to_scene(body="Unit Smocking Pattern", 
-                          location=(0, self.base_y+0.5, 0), 
+                          location=(0, location[1] + self.base_y+0.5, 0), 
                           scale=(1,1,1),
                           obj_name='grid_annotation',
                           coll_name=COLL_NAME_USP)
         
         for lid in range(len(self.stitching_lines)):
-            pos = self.get_pts_in_stitching_line(lid)
+
+            vtxID = self.get_vtx_in_stitching_line(lid)
+
+            pos = get_vtx_pos(mesh, np.array(vtxID))
+ 
             draw_stitching_line(pos, col_blue, "stitching_line_" + str(lid), STROKE_SIZE, COLL_NAME_USP_SL)
-#            add_stroke_to_gpencil(pos, col_blue, "USP_StitchingLines", STROKE_SIZE)
+
 
     def info(self):
         print('------------------------------')
@@ -369,6 +450,9 @@ class UnitSmockingPattern():
         print('No. stitching lines: ' + str(len(self.stitching_lines)))
 
 
+
+
+#----------------------- Smocking Pattern Class --------------------------------
 
 class SmockingPattern():
     """Full Smocking Pattern"""
@@ -490,15 +574,18 @@ class SmockingPattern():
         mesh = bpy.data.objects[self.pattern_name]
         
         mesh.scale = (1, 1, 1)
-        mesh.location = (location[0]-min(self.V[:,0]), location[1]-max(self.V[:,1])-LAYOUT_Y_SHIFT, 0)
+        mesh.location = (location[0], location[1], 0)
         mesh.show_axis = False
         mesh.show_wire = True
         mesh.display_type = 'WIRE'
         select_one_object(mesh)
         
+        text_loc = (location[0] + min(self.V[:,0]), \
+                    location[1] + min(self.V[:,1]) + self.return_pattern_height()+0.5, \
+                    0)
         # add annotation to full pattern
         add_text_to_scene(body=self.annotation_text, 
-                          location=(location[0], location[1]- LAYOUT_Y_SHIFT+0.5, 0), 
+                          location=text_loc, 
                           scale=(1,1,1),
                           obj_name=self.pattern_name+"_annotation",
                           coll_name=self.coll_name)
@@ -557,8 +644,6 @@ def delete_all_gpencil_objects():
 def delete_all_objects() -> None:
     for item in bpy.data.objects:
         bpy.data.objects.remove(item)
-
-
 
 
 
@@ -959,14 +1044,20 @@ def generate_grid_for_unit_pattern(base_x, base_y, if_add_diag=False):
     # instead, manually create a grid
     
     gx, gy = create_grid(base_x, base_y)
+
     F, V, _ = extract_graph_from_meshgrid(gx, gy, if_add_diag)
+
     construct_object_from_mesh_to_scene(V, F, MESH_NAME_USP, COLL_NAME_USP)
     
     mesh = bpy.data.objects[MESH_NAME_USP]
-    
-    show_mesh(mesh)
 
-    return mesh
+    usp_loc, _ = return_usp_fsp_location()
+
+    show_mesh(mesh,
+        scale=(1,1,1),
+        location=(usp_loc[0], usp_loc[1], 0))
+
+    return mesh, F, V
     
 
 def generate_tiled_grid_for_full_pattern(len_x, len_y, if_add_diag=True):
@@ -978,10 +1069,12 @@ def generate_tiled_grid_for_full_pattern(len_x, len_y, if_add_diag=True):
     construct_object_from_mesh_to_scene(V, F, MESH_NAME_FSP, COLL_NAME_FSP)
     
     mesh = bpy.data.objects[MESH_NAME_FSP]
+
+    _, fsp_loc = return_usp_fsp_location()
     
     show_mesh(mesh, 
               scale=(1,1,1), 
-              location=(0, -len_y - 2.5, 0))
+              location=(fsp_loc[0], fsp_loc[1], 0))
     
                 
     return mesh, F, V, E
@@ -1065,32 +1158,54 @@ def initialize_pattern_collection(coll_name, stroke_coll_name):
 # TODO: make the layout better
 def return_tmp_pattern_location():
     dt = bpy.types.Scene.solver_data
+
     fsp1 = dt.tmp_fsp1  
     fsp2 = dt.tmp_fsp2
     fsp3 = dt.tmp_fsp
 
-    fsp1_loc = [0, 0]
-    fsp2_loc = [0, 0]
-    fsp3_loc = [0, 0]
+    fsp1_loc = [-10, 10]
+    fsp2_loc = [-10, 5]
+    fsp3_loc = [-10, 0]
 
-    if fsp1 != []:
-        fsp1_loc[0] = -fsp1.return_pattern_width() - LAYOUT_X_SHIFT 
-        fsp1_loc[1] = fsp1.return_pattern_height() + LAYOUT_Y_SHIFT 
+    # for each pattern the origin is at (0,0), which is not necessarily at the left-bottom corner
+    if fsp3 != []:
+        fsp3_loc[0] = min(-fsp3.return_pattern_width() - min(fsp3.V[:,0]) - LAYOUT_X_SHIFT, fsp3_loc[0])
+        fsp3_loc[1] -= min(fsp3.V[:,1])
+
+        # fsp2_loc[1] = max(fsp3_loc[1] + fsp3.return_pattern_height()+min(fsp3.V[:,1]) + LAYOUT_Y_SHIFT, fsp2_loc[1])
+        fsp2_loc[1] = fsp3_loc[1] + fsp3.return_pattern_height() - min(fsp2.V[:,1]) + LAYOUT_Y_SHIFT
+        
+        fsp2_loc[0] = -fsp3.return_pattern_width() - min(fsp2.V[:,0]) - LAYOUT_X_SHIFT
+
+        fsp1_loc[0] = -fsp3.return_pattern_width() - min(fsp1.V[:, 0]) - LAYOUT_X_SHIFT
 
     if fsp2 != []:
-        fsp2_loc[0] = -fsp2.return_pattern_width() - LAYOUT_X_SHIFT 
-        fsp2_loc[1] = 0
+        # fsp1_loc[1] = max(fsp2_loc[1] + fsp2.return_pattern_height()+min(fsp2.V[:,1]) + LAYOUT_Y_SHIFT, fsp2_loc[1])
 
-    if fsp3 != []: # the combined pattern
-        fsp3_loc[0] = -fsp3.return_pattern_width() - LAYOUT_X_SHIFT
-        fsp3_loc[1] = - fsp2.return_pattern_height() - LAYOUT_Y_SHIFT
+        fsp1_loc[1] = fsp2_loc[1] + fsp2.return_pattern_height() - min(fsp1.V[:,1]) + LAYOUT_Y_SHIFT
+        
 
-    a = min(fsp1_loc[0], fsp2_loc[0], fsp3_loc[0])
 
-    fsp1_loc[0], fsp2_loc[0], fsp3_loc[0] = a, a, a
+
 
     return fsp1_loc, fsp2_loc, fsp3_loc
-    
+
+
+
+def return_usp_fsp_location():
+    dt = bpy.types.Scene.solver_data
+    usp = dt.unit_smocking_pattern
+    fsp = dt.full_smocking_pattern
+
+    usp_loc = [0,5]
+    fsp_loc = [0,0]
+
+    if fsp != []:
+        fsp_loc[0] -= min(fsp.V[:,0])
+        fsp_loc[1] -= min(fsp.V[:,1])
+        usp_loc[1] = max(usp_loc[1], fsp.return_pattern_height() + LAYOUT_USP_FSP_SPACE)
+
+    return usp_loc, fsp_loc
 # ========================================================================
 #                      Core functions for smocking pattern
 # ========================================================================
@@ -1452,13 +1567,22 @@ def extract_smocked_graph_from_full_smocking_pattern(fsp, init_type = 'center'):
         E_sg.append([dict_sp2sg[e[0]], dict_sp2sg[e[1]]])
 
     E_sg = sort_edge(E_sg)
+
+    # find the faces - for visualization only
+    F = fsp.F
+    F_sg = []
+    for f in F:
+        face = []
+        for vid in f:
+            face.append(dict_sp2sg[vid])
+        F_sg.append(np.unique(np.array(face)))
     
     # category the edges
     tmp = np.array(E_sg[:,0] < nl).astype(int) + np.array(E_sg[:, 1] < nl).astype(int)
     eid_underlay = np.array(find_index_in_list(tmp, 2))
     eid_pleat = np.setdiff1d(range(len(E_sg)), eid_underlay)
 
-    return V_sg, E_sg, dict_sg2sp, dict_sp2sg, vid_underlay, vid_pleat, eid_underlay, eid_pleat
+    return V_sg, E_sg, F_sg, dict_sg2sp, dict_sp2sg, vid_underlay, vid_pleat, eid_underlay, eid_pleat
 
 
 
@@ -1565,7 +1689,6 @@ class USP_FinishPattern(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        initialize_pattern_collection(COLL_NAME_USP, COLL_NAME_USP_SL)
             
         props = bpy.context.scene.sl_props
                 
@@ -1576,8 +1699,8 @@ class USP_FinishPattern(Operator):
                                                  context.scene.base_x,
                                                  context.scene.base_y)
 
-
-        usp.plot()
+        usp_loc, _ = return_usp_fsp_location()
+        usp.plot(usp_loc)
         
         # save the loaded pattern to the scene
         bpy.types.Scene.solver_data.unit_smocking_pattern = usp
@@ -1654,7 +1777,8 @@ class ImportUnitPattern(Operator):
         file_name = bpy.path.abspath(context.scene.path_import)
         usp = read_usp(file_name)
         
-        usp.plot()
+        usp_loc, _ = return_usp_fsp_location()
+        usp.plot(usp_loc)
         # save the loaded pattern to the scene
         bpy.types.Scene.solver_data.unit_smocking_pattern = usp
         
@@ -1686,9 +1810,12 @@ class USP_CreateGrid(Operator):
         base_y = context.scene.base_y
         
         generate_grid_for_unit_pattern(base_x, base_y)
-        
+
+        usp_loc, _ = return_usp_fsp_location()
+
+
         add_text_to_scene(body="Unit Smocking Pattern", 
-                          location=(0, base_y+0.5, 0), 
+                          location=(0, usp_loc[1] + base_y + 0.5, 0), 
                           scale=(1,1,1),
                           obj_name='grid_annotation',
                           coll_name=COLL_NAME_USP)
@@ -1732,14 +1859,26 @@ class FSP_Tile(Operator):
         
         mesh, F, V, E = generate_tiled_grid_for_full_pattern(len_x, len_y, True)
     
-        SP = SmockingPattern(V, F, E,
+        fsp = SmockingPattern(V, F, E,
                              all_sp, 
                              all_sp_lid,
                              all_sp_pid)
-        SP.plot()
-        
+
+
         # save the loaded pattern to the scene
-        bpy.types.Scene.solver_data.full_smocking_pattern = SP
+        bpy.types.Scene.solver_data.full_smocking_pattern = fsp
+
+
+        usp_loc, fsp_loc = return_usp_fsp_location()
+
+        fsp.plot(fsp_loc)
+
+        # also update the usp plot
+        usp = bpy.types.Scene.solver_data.unit_smocking_pattern
+        usp.plot(usp_loc)
+
+        
+        
         
     
         return {'FINISHED'}
@@ -1841,8 +1980,10 @@ class FSP_DeleteStitchingLines_done(Operator):
         all_sp, all_sp_lid, all_sp_pid = refresh_stitching_lines()
         
         fsp.update_stitching_lines(all_sp, all_sp_lid, all_sp_pid)
-        
-        fsp.plot()
+
+        usp_loc, fsp_loc = return_usp_fsp_location()
+        usp.plot(usp_loc)
+        fsp.plot(fsp_loc)
                     
         return {'FINISHED'}
 
@@ -1962,8 +2103,10 @@ class FSP_AddStitchingLines_draw_finish(Operator):
         all_sp, all_sp_lid, all_sp_pid = refresh_stitching_lines()
         
         fsp.update_stitching_lines(all_sp, all_sp_lid, all_sp_pid)
-        
-        fsp.plot()
+        usp_loc, fsp_loc = return_usp_fsp_location()
+        usp.plot(usp_loc)
+        fsp.plot(fsp_loc)
+
                     
         return {'FINISHED'}
 
@@ -2249,10 +2392,14 @@ class FSP_confirm_tmp_fsp(Operator):
                  "Full Smocking Pattern")
             dt.full_smocking_pattern = fsp_new
 
-            dt.full_smocking_pattern.plot()
+            _, fsp_loc = return_usp_fsp_location()
+
+            dt.full_smocking_pattern.plot(fsp_loc)
             dt.tmp_fsp = []
 
             initialize_pattern_collection(COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL)
+            initialize_pattern_collection(COLL_NAME_USP, COLL_NAME_USP_SL)
+                     
    
         return {'FINISHED'}
 
@@ -2946,3 +3093,48 @@ if __name__ == "__main__":
 #     bpy.ops.object.select_all(action='SELECT')
 #     bpy.ops.object.delete()
 
+
+    # if fsp1 != []:
+    #     fsp1_loc = [min(fsp1.V[:, 0]), min(fsp1.V[:, 1])]
+    #     fsp1_loc[0] -= fsp1.return_pattern_width()
+    # else:
+    #     fsp1_loc = [0, 0]
+    # if fsp2 != []:
+    #     fsp2_loc = [min(fsp2.V[:,0]), min(fsp2.V[:, 1])]
+    #     fsp1_loc[0] -= fsp2.return_pattern_width()
+    #     fsp2_loc[0] -= fsp2.return_pattern_width()
+    # else:
+    #     fsp2_loc = fsp1_loc
+    # if fsp3 != []:
+    #     fsp3_loc = [min(fsp3.V[:, 0]), min(fsp3.V[:, 1])]
+    #     fsp3_loc[0] -= fsp3.return_pattern_width()
+    #     fsp1_loc[1] += fsp3.return_pattern_height() + LAYOUT_Y_SHIFT
+    #     fsp2_loc[1] += fsp3.return_pattern_height() + LAYOUT_Y_SHIFT
+    # else:
+    #     fsp3_loc = [0,0]
+
+
+    # if fsp1 != []:
+    #     fsp1_loc[0] = -fsp1.return_pattern_width() - LAYOUT_X_SHIFT 
+    #     fsp1_loc[1] = fsp1.return_pattern_height() + LAYOUT_Y_SHIFT 
+
+    # if fsp2 != []:
+    #     fsp2_loc[0] = -fsp2.return_pattern_width() - LAYOUT_X_SHIFT 
+    #     fsp2_loc[1] = 0
+
+    # if fsp3 != []: # the combined pattern
+    #     fsp3_loc[0] = -fsp3.return_pattern_width() - LAYOUT_X_SHIFT
+    #     fsp3_loc[1] = - fsp2.return_pattern_height() - LAYOUT_Y_SHIFT
+
+
+    # a = min(fsp1_loc[0], fsp2_loc[0], fsp3_loc[0])
+
+    # fsp1_loc[0], fsp2_loc[0], fsp3_loc[0] = a, a, a
+
+    # if fsp3 != []: # such that fsp1 and fsp2 are above fsp3
+    #     a = max(fsp3.return_pattern_height() + LAYOUT_Y_SHIFT, fsp1_loc[1], fsp2_loc[1])
+    #     fsp1_loc[1], fsp2_loc[1] = a, a
+
+    # if fsp2 != []:
+    #     a = min(-fsp2.return_pattern_width() - LAYOUT_X_SHIFT, fsp1_loc[0], fsp3_loc[0])
+    #     fsp1_loc[0], fsp3_loc[0] = a, a
