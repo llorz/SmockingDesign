@@ -34,8 +34,13 @@ from scipy.spatial.distance import cdist
 
 col_blue = (76/255.0, 201/255.0,240/255.0)
 col_yellow = (254/255.0, 228/255.0, 64/255.0)
+col_green = (181/255.0, 228/255.0, 140/255.0)
+col_red = (240/255.0, 113/255.0, 103/255.0)
+col_gray = (0.75, 0.75, 0.75)
 
 STROKE_SIZE = 10 # to plot the stiching lines
+
+LAYOUT_TEXT = 0.4 # the space above the pattern
 # align P1/P2/P1_P2_COMBINED
 LAYOUT_Y_SHIFT = 2
 LAYOUT_X_SHIFT = 2
@@ -237,70 +242,6 @@ class debug_func(Operator):
         dt = bpy.types.Scene.solver_data
 
         fsp = dt.full_smocking_pattern
-        # # construct smocked graph
-        # fsp_vid_underlay = fsp.stitching_points_vtx_id
-        # fsp_vid_pleat = np.setdiff1d(range(fsp.nv), fsp_vid_underlay)
-
-        # # use dictionary to record the vertex correspondences between the 
-        # # smocked graph (sg) and the smocking pattern (sp)
-        # dict_sp2sg = {}
-        # dict_sg2sp = {}
-
-        # nl = fsp.num_stitching_lines()
-        
-        # # each stiching line in SP becomes a single node in SG
-        # for lid in range(nl):
-        #     vtxID = fsp.get_vid_in_stitching_line(lid)
-        #     dict_sg2sp[lid] = vtxID
-
-        #     for vid in vtxID:
-        #         dict_sp2sg[vid] = lid
-
-        # count = nl
-        # for vid in fsp_vid_pleat:
-        #     dict_sp2sg[vid] = count
-        #     dict_sg2sp[count] = [vid]
-        #     count += 1
-        
-        # # by construction we know
-        # # the first nl vertices are underlay vertices
-        # vid_underlay = np.array(range(nl))
-        # # the rest are pleat vertices
-        # vid_pleat = np.array(range(nl, len(dict_sg2sp)))
-
-
-        # # vtx pos of the smocked graph
-        
-        # V = fsp.V
-
-        # V_sg = np.zeros((len(dict_sg2sp),3))
-
-        # for vid in range(len(dict_sg2sp)):
-        #     vtx = dict_sg2sp[vid]
-        #     if len(vtx) > 1:
-        #         coord = np.mean(V[vtx, :], axis=0)
-        #     else:
-        #         coord = V[vtx, :]
-        #     V_sg[vid, 0:2] = coord    
-            
-
-        # # find the edges
-        # E = fsp.E
-        # E_sg = []
-        # for e in E:
-        #     E_sg.append([dict_sp2sg[e[0]], dict_sp2sg[e[1]]])
-
-        # E_sg = sort_edge(E_sg)
-        
-        # # category the edges
-        # tmp = np.array(E_sg[:,0] < nl).astype(int) + np.array(E_sg[:, 1] < nl).astype(int)
-        # print(tmp)
-        
-        # eid_underlay = np.array(find_index_in_list(tmp, 2))
-        # eid_pleat = np.setdiff1d(range(len(E_sg)), eid_underlay)
-        # print(eid_underlay)
-        # print(eid_pleat)
-        # # print(E_sg[eid_underlay,:])
 
         SG = SmockedGraph(fsp)
         SG.info()
@@ -374,18 +315,77 @@ class SmockedGraph():
         print('No. edges %d : %d underlay + %d pleat' % (self.ne, len(self.eid_underlay), len(self.eid_pleat) ) )
         
         
-    def plot(self, location=(0,0)):
-        print('not done yet')
+    def plot(self, 
+             location=(0,0), 
+             if_show_separate_underlay=True,
+             if_show_separate_pleat=True):
         initialize_pattern_collection(COLL_NAME_SG, COLL_NAME_SG_SL)        
         construct_object_from_mesh_to_scene(self.V, self.F, MESH_NAME_SG, COLL_NAME_SG)
         mesh = bpy.data.objects[MESH_NAME_SG]
         
         mesh.scale = (1, 1, 1)
-        mesh.location = (10 + location[0]-min(self.V[:,0]), location[1]-max(self.V[:,1])-LAYOUT_Y_SHIFT, 0)
+        mesh.location = (location[0]-min(self.V[:,0]), location[1]-max(self.V[:,1])+min(self.V[:,1])-LAYOUT_Y_SHIFT, 0)
         mesh.show_axis = False
         mesh.show_wire = True
         mesh.display_type = 'WIRE'
         select_one_object(mesh)
+
+
+        text_loc = (location[0], location[1]-LAYOUT_Y_SHIFT+LAYOUT_TEXT, 0)
+        add_text_to_scene(body="Smocked Graph", 
+                          location=text_loc, 
+                          scale=(1,1,1),
+                          obj_name='graph_annotation',
+                          coll_name=COLL_NAME_SG)
+
+        # visualize the vertices in different colors
+        fsp = self.full_smocking_pattern
+        # show underlay 
+        if if_show_separate_underlay:
+
+            trans = np.array((fsp.return_pattern_width()+2,0,0))
+
+            for eid in self.eid_underlay:
+                vtxID = self.E[eid, :]
+                pos = get_vtx_pos(mesh, np.array(vtxID)) + trans
+                draw_stitching_line(pos, col_red, "edge_underlay_" + str(eid), STROKE_SIZE, COLL_NAME_SG)
+    #       
+            add_text_to_scene(body="Underaly Graph", 
+                              location=tuple(np.array(text_loc) + trans), 
+                              scale=(1,1,1),
+                              obj_name='underlay_graph_annotation',
+                              coll_name=COLL_NAME_SG)
+
+
+
+        
+        if if_show_separate_pleat:
+            
+            trans = np.array((fsp.return_pattern_width()+2, -fsp.return_pattern_height()-2,0))
+
+            # first add underlay
+            for eid in self.eid_underlay:
+                vtxID = self.E[eid, :]
+                pos = get_vtx_pos(mesh, np.array(vtxID)) + trans
+                draw_stitching_line(pos, col_gray, "edge_underlay2_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+
+
+            
+
+            for eid in self.eid_pleat:
+                vtxID = self.E[eid, :]
+                pos = get_vtx_pos(mesh, np.array(vtxID)) + trans
+                draw_stitching_line(pos, col_red, "edge_pleat_" + str(eid), STROKE_SIZE, COLL_NAME_SG)
+    #       
+            add_text_to_scene(body="Pleat Graph", 
+                              location=tuple(np.array(text_loc) + trans), 
+                              scale=(1,1,1),
+                              obj_name='pleat_graph_annotation',
+                              coll_name=COLL_NAME_SG)
+        
+
+
+
 
 
 #----------------------- Unit Smocking Pattern Class ----------------------------
@@ -428,7 +428,7 @@ class UnitSmockingPattern():
         mesh.location = (location[0], location[1], 0)
 
         add_text_to_scene(body="Unit Smocking Pattern", 
-                          location=(0, location[1] + self.base_y+0.5, 0), 
+                          location=(0, location[1] + self.base_y + LAYOUT_TEXT, 0), 
                           scale=(1,1,1),
                           obj_name='grid_annotation',
                           coll_name=COLL_NAME_USP)
@@ -581,7 +581,7 @@ class SmockingPattern():
         select_one_object(mesh)
         
         text_loc = (location[0] + min(self.V[:,0]), \
-                    location[1] + min(self.V[:,1]) + self.return_pattern_height()+0.5, \
+                    location[1] + min(self.V[:,1]) + self.return_pattern_height() + LAYOUT_TEXT, \
                     0)
         # add annotation to full pattern
         add_text_to_scene(body=self.annotation_text, 
@@ -978,11 +978,28 @@ def create_line_stroke_from_gpencil(name="GPencil", line_width=12, coll_name=COL
 
 def draw_stitching_line(pts, col, name="stitching_line", line_width=12, coll_name=COLL_NAME_FSP): 
     gpencil, gp_stroke = create_line_stroke_from_gpencil(name, line_width, coll_name)
-    gp_stroke.points.add(len(pts))
+    
+    if len(pts) == 2: # we add a midpoint to make the drawing looks nicer
+        gp_stroke.points.add(len(pts)+1)
+        
+        gp_stroke.points[0].co = pts[0]
+        gp_stroke.points[0].pressure = 2
 
-    for item, value in enumerate(pts):
-        gp_stroke.points[item].co = value
-        gp_stroke.points[item].pressure = 10
+        gp_stroke.points[1].co = (pts[0] + pts[1])/2.0
+        gp_stroke.points[1].pressure = 10
+
+        gp_stroke.points[2].co = pts[1]
+        gp_stroke.points[2].pressure = 2
+
+    else:
+        gp_stroke.points.add(len(pts))
+        
+        for item, value in enumerate(pts):
+            gp_stroke.points[item].co = value
+            gp_stroke.points[item].pressure = 10
+    
+
+
         
     mat = bpy.data.materials.new(name="Black")
     bpy.data.materials.create_gpencil_data(mat)
@@ -1132,6 +1149,7 @@ def initialize():
     initialize_pattern_collection(COLL_NAME_P1, COLL_NAME_P1_SL)
     initialize_pattern_collection(COLL_NAME_P2, COLL_NAME_P2_SL)
     initialize_pattern_collection(COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL)
+    initialize_pattern_collection(COLL_NAME_SG, COLL_NAME_SG_SL)
     
 
 
@@ -1140,8 +1158,9 @@ def initialize_pattern_collection(coll_name, stroke_coll_name):
     if_coll_exist = False
 
     for coll in bpy.data.collections:
-        if coll_name in coll.name:
-            if_tmp_coll_exist = True
+        # if coll_name in coll.name:
+        if coll_name == coll.name.split(".")[0]:
+            if_coll_exist = True
 
     if not if_coll_exist:
 
@@ -1154,6 +1173,12 @@ def initialize_pattern_collection(coll_name, stroke_coll_name):
 
     for c in [coll_name, stroke_coll_name]:
             clean_objects_in_collection(c)
+
+
+
+
+#-------------------------  update the layout to avoid overlapping
+
 
 # TODO: make the layout better
 def update_tmp_pattern_location():
@@ -1184,15 +1209,18 @@ def update_tmp_pattern_location():
 
     # update the location
 
-    if fsp3 != []:
-        
+    if fsp3 != []:     
+
         fsp2_loc[1] += fsp3_loc[1] + fsp3.return_pattern_height()  + LAYOUT_Y_SHIFT
 
         if fsp2 != []:      
+
             fsp1_loc[1] += fsp2_loc[1] + fsp2.return_pattern_height()  + LAYOUT_Y_SHIFT
+
         else:
 
             fsp1_loc[1] += fsp3_loc[1] + fsp3.return_pattern_height()  + LAYOUT_Y_SHIFT
+
     elif fsp2 != []:
 
         fsp1_loc[1] += fsp2_loc[1] + fsp2.return_pattern_height()  + LAYOUT_Y_SHIFT
@@ -1217,6 +1245,13 @@ def update_usp_fsp_location():
         usp_loc[1] = max(usp_loc[1], fsp.return_pattern_height() + LAYOUT_USP_FSP_SPACE)
 
     return usp_loc, fsp_loc
+
+
+def update_smocked_graph_location():
+    print('not done yet')
+
+
+
 # ========================================================================
 #                      Core functions for smocking pattern
 # ========================================================================
@@ -1826,7 +1861,7 @@ class USP_CreateGrid(Operator):
 
 
         add_text_to_scene(body="Unit Smocking Pattern", 
-                          location=(0, usp_loc[1] + base_y + 0.5, 0), 
+                          location=(0, usp_loc[1] + base_y + LAYOUT_TEXT, 0), 
                           scale=(1,1,1),
                           obj_name='grid_annotation',
                           coll_name=COLL_NAME_USP)
@@ -3149,3 +3184,74 @@ if __name__ == "__main__":
     # if fsp2 != []:
     #     a = min(-fsp2.return_pattern_width() - LAYOUT_X_SHIFT, fsp1_loc[0], fsp3_loc[0])
     #     fsp1_loc[0], fsp3_loc[0] = a, a
+
+
+# ========================================================================
+#                         to delete - temporary backup
+# ========================================================================
+
+
+        # # construct smocked graph
+        # fsp_vid_underlay = fsp.stitching_points_vtx_id
+        # fsp_vid_pleat = np.setdiff1d(range(fsp.nv), fsp_vid_underlay)
+
+        # # use dictionary to record the vertex correspondences between the 
+        # # smocked graph (sg) and the smocking pattern (sp)
+        # dict_sp2sg = {}
+        # dict_sg2sp = {}
+
+        # nl = fsp.num_stitching_lines()
+        
+        # # each stiching line in SP becomes a single node in SG
+        # for lid in range(nl):
+        #     vtxID = fsp.get_vid_in_stitching_line(lid)
+        #     dict_sg2sp[lid] = vtxID
+
+        #     for vid in vtxID:
+        #         dict_sp2sg[vid] = lid
+
+        # count = nl
+        # for vid in fsp_vid_pleat:
+        #     dict_sp2sg[vid] = count
+        #     dict_sg2sp[count] = [vid]
+        #     count += 1
+        
+        # # by construction we know
+        # # the first nl vertices are underlay vertices
+        # vid_underlay = np.array(range(nl))
+        # # the rest are pleat vertices
+        # vid_pleat = np.array(range(nl, len(dict_sg2sp)))
+
+
+        # # vtx pos of the smocked graph
+        
+        # V = fsp.V
+
+        # V_sg = np.zeros((len(dict_sg2sp),3))
+
+        # for vid in range(len(dict_sg2sp)):
+        #     vtx = dict_sg2sp[vid]
+        #     if len(vtx) > 1:
+        #         coord = np.mean(V[vtx, :], axis=0)
+        #     else:
+        #         coord = V[vtx, :]
+        #     V_sg[vid, 0:2] = coord    
+            
+
+        # # find the edges
+        # E = fsp.E
+        # E_sg = []
+        # for e in E:
+        #     E_sg.append([dict_sp2sg[e[0]], dict_sp2sg[e[1]]])
+
+        # E_sg = sort_edge(E_sg)
+        
+        # # category the edges
+        # tmp = np.array(E_sg[:,0] < nl).astype(int) + np.array(E_sg[:, 1] < nl).astype(int)
+        # print(tmp)
+        
+        # eid_underlay = np.array(find_index_in_list(tmp, 2))
+        # eid_pleat = np.setdiff1d(range(len(E_sg)), eid_underlay)
+        # print(eid_underlay)
+        # print(eid_pleat)
+        # # print(E_sg[eid_underlay,:])
