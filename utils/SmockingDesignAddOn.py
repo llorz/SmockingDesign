@@ -37,7 +37,7 @@ col_yellow = (254/255.0, 228/255.0, 64/255.0)
 
 STROKE_SIZE = 10 # to plot the stiching lines
 # align P1/P2/P1_P2_COMBINED
-LAYOUT_Y_SHIFT = 3
+LAYOUT_Y_SHIFT = 2
 LAYOUT_X_SHIFT = 2
 # align USP FSP
 LAYOUT_USP_FSP_SPACE = 2
@@ -1051,7 +1051,7 @@ def generate_grid_for_unit_pattern(base_x, base_y, if_add_diag=False):
     
     mesh = bpy.data.objects[MESH_NAME_USP]
 
-    usp_loc, _ = return_usp_fsp_location()
+    usp_loc, _ = update_usp_fsp_location()
 
     show_mesh(mesh,
         scale=(1,1,1),
@@ -1070,7 +1070,7 @@ def generate_tiled_grid_for_full_pattern(len_x, len_y, if_add_diag=True):
     
     mesh = bpy.data.objects[MESH_NAME_FSP]
 
-    _, fsp_loc = return_usp_fsp_location()
+    _, fsp_loc = update_usp_fsp_location()
     
     show_mesh(mesh, 
               scale=(1,1,1), 
@@ -1156,35 +1156,46 @@ def initialize_pattern_collection(coll_name, stroke_coll_name):
             clean_objects_in_collection(c)
 
 # TODO: make the layout better
-def return_tmp_pattern_location():
+def update_tmp_pattern_location():
     dt = bpy.types.Scene.solver_data
 
     fsp1 = dt.tmp_fsp1  
     fsp2 = dt.tmp_fsp2
     fsp3 = dt.tmp_fsp
 
-    fsp1_loc = [-10, 10]
-    fsp2_loc = [-10, 5]
-    fsp3_loc = [-10, 0]
+    # initialize the location
 
     # for each pattern the origin is at (0,0), which is not necessarily at the left-bottom corner
-    if fsp3 != []:
-        fsp3_loc[0] = min(-fsp3.return_pattern_width() - min(fsp3.V[:,0]) - LAYOUT_X_SHIFT, fsp3_loc[0])
-        fsp3_loc[1] -= min(fsp3.V[:,1])
 
-        # fsp2_loc[1] = max(fsp3_loc[1] + fsp3.return_pattern_height()+min(fsp3.V[:,1]) + LAYOUT_Y_SHIFT, fsp2_loc[1])
-        fsp2_loc[1] = fsp3_loc[1] + fsp3.return_pattern_height() - min(fsp2.V[:,1]) + LAYOUT_Y_SHIFT
-        
-        fsp2_loc[0] = -fsp3.return_pattern_width() - min(fsp2.V[:,0]) - LAYOUT_X_SHIFT
-
-        fsp1_loc[0] = -fsp3.return_pattern_width() - min(fsp1.V[:, 0]) - LAYOUT_X_SHIFT
+    if fsp1 != []:
+        fsp1_loc = [-fsp1.return_pattern_width() - min(fsp1.V[:,0]) - LAYOUT_X_SHIFT, -min(fsp1.V[:, 1])]
+    else:
+        fsp1_loc = [-10,2]
 
     if fsp2 != []:
-        # fsp1_loc[1] = max(fsp2_loc[1] + fsp2.return_pattern_height()+min(fsp2.V[:,1]) + LAYOUT_Y_SHIFT, fsp2_loc[1])
+        fsp2_loc = [-fsp2.return_pattern_width() - min(fsp2.V[:,0]) - LAYOUT_X_SHIFT, -min(fsp2.V[:, 1])]
+    else:
+        fsp2_loc = [-10,2]
 
-        fsp1_loc[1] = fsp2_loc[1] + fsp2.return_pattern_height() - min(fsp1.V[:,1]) + LAYOUT_Y_SHIFT
+    if fsp3 != []:
+        fsp3_loc = [-fsp3.return_pattern_width() - min(fsp3.V[:,0]) - LAYOUT_X_SHIFT, -min(fsp3.V[:, 1])]
+    else:
+        fsp3_loc = [-10,2]
+
+    # update the location
+
+    if fsp3 != []:
         
+        fsp2_loc[1] += fsp3_loc[1] + fsp3.return_pattern_height()  + LAYOUT_Y_SHIFT
 
+        if fsp2 != []:      
+            fsp1_loc[1] += fsp2_loc[1] + fsp2.return_pattern_height()  + LAYOUT_Y_SHIFT
+        else:
+
+            fsp1_loc[1] += fsp3_loc[1] + fsp3.return_pattern_height()  + LAYOUT_Y_SHIFT
+    elif fsp2 != []:
+
+        fsp1_loc[1] += fsp2_loc[1] + fsp2.return_pattern_height()  + LAYOUT_Y_SHIFT
 
 
 
@@ -1192,7 +1203,7 @@ def return_tmp_pattern_location():
 
 
 
-def return_usp_fsp_location():
+def update_usp_fsp_location():
     dt = bpy.types.Scene.solver_data
     usp = dt.unit_smocking_pattern
     fsp = dt.full_smocking_pattern
@@ -1699,7 +1710,7 @@ class USP_FinishPattern(Operator):
                                                  context.scene.base_x,
                                                  context.scene.base_y)
 
-        usp_loc, _ = return_usp_fsp_location()
+        usp_loc, _ = update_usp_fsp_location()
         usp.plot(usp_loc)
         
         # save the loaded pattern to the scene
@@ -1777,7 +1788,7 @@ class ImportUnitPattern(Operator):
         file_name = bpy.path.abspath(context.scene.path_import)
         usp = read_usp(file_name)
         
-        usp_loc, _ = return_usp_fsp_location()
+        usp_loc, _ = update_usp_fsp_location()
         usp.plot(usp_loc)
         # save the loaded pattern to the scene
         bpy.types.Scene.solver_data.unit_smocking_pattern = usp
@@ -1811,7 +1822,7 @@ class USP_CreateGrid(Operator):
         
         generate_grid_for_unit_pattern(base_x, base_y)
 
-        usp_loc, _ = return_usp_fsp_location()
+        usp_loc, _ = update_usp_fsp_location()
 
 
         add_text_to_scene(body="Unit Smocking Pattern", 
@@ -1869,7 +1880,7 @@ class FSP_Tile(Operator):
         bpy.types.Scene.solver_data.full_smocking_pattern = fsp
 
 
-        usp_loc, fsp_loc = return_usp_fsp_location()
+        usp_loc, fsp_loc = update_usp_fsp_location()
 
         fsp.plot(fsp_loc)
 
@@ -1981,7 +1992,7 @@ class FSP_DeleteStitchingLines_done(Operator):
         
         fsp.update_stitching_lines(all_sp, all_sp_lid, all_sp_pid)
 
-        usp_loc, fsp_loc = return_usp_fsp_location()
+        usp_loc, fsp_loc = update_usp_fsp_location()
         usp.plot(usp_loc)
         fsp.plot(fsp_loc)
                     
@@ -2103,7 +2114,7 @@ class FSP_AddStitchingLines_draw_finish(Operator):
         all_sp, all_sp_lid, all_sp_pid = refresh_stitching_lines()
         
         fsp.update_stitching_lines(all_sp, all_sp_lid, all_sp_pid)
-        usp_loc, fsp_loc = return_usp_fsp_location()
+        usp_loc, fsp_loc = update_usp_fsp_location()
         usp.plot(usp_loc)
         fsp.plot(fsp_loc)
 
@@ -2203,7 +2214,7 @@ class FSP_CombinePatterns_load_first(Operator):
 
         dt.tmp_fsp = []
 
-        fsp1_loc, fsp2_loc, _ = return_tmp_pattern_location()
+        fsp1_loc, fsp2_loc, _ = update_tmp_pattern_location()
         
         if dt.tmp_fsp2 != []:
             dt.tmp_fsp2.plot(fsp2_loc)
@@ -2236,7 +2247,7 @@ class FSP_CombinePatterns_load_second(Operator):
 
         dt.tmp_fsp = []
 
-        fsp1_loc, fsp2_loc, _ = return_tmp_pattern_location()
+        fsp1_loc, fsp2_loc, _ = update_tmp_pattern_location()
 
         if dt.tmp_fsp1 != []:
             dt.tmp_fsp1.plot(fsp1_loc)
@@ -2273,7 +2284,7 @@ class FSP_CombinePatterns_assign_to_first(Operator):
                  COLL_NAME_P1,
                  COLL_NAME_P1_SL,
                  "Pattern 01")
-            fsp1_loc, fsp2_loc, _ = return_tmp_pattern_location()
+            fsp1_loc, fsp2_loc, _ = update_tmp_pattern_location()
 
             if dt.tmp_fsp2 != []:
                 dt.tmp_fsp2.plot(fsp2_loc)
@@ -2311,7 +2322,7 @@ class FSP_CombinePatterns_assign_to_second(Operator):
                  COLL_NAME_P2_SL,
                  "Pattern 02")
 
-            fsp1_loc, fsp2_loc, _ = return_tmp_pattern_location()
+            fsp1_loc, fsp2_loc, _ = update_tmp_pattern_location()
 
             if dt.tmp_fsp1 != []:
                 dt.tmp_fsp1.plot(fsp1_loc)
@@ -2355,7 +2366,7 @@ class FSP_CombinePatterns(Operator):
 
 
             # udpate the patterns
-            fsp1_loc, fsp2_loc, fsp3_loc = return_tmp_pattern_location()
+            fsp1_loc, fsp2_loc, fsp3_loc = update_tmp_pattern_location()
 
             dt.tmp_fsp1.plot(fsp1_loc)
             dt.tmp_fsp2.plot(fsp2_loc)
@@ -2392,7 +2403,7 @@ class FSP_confirm_tmp_fsp(Operator):
                  "Full Smocking Pattern")
             dt.full_smocking_pattern = fsp_new
 
-            _, fsp_loc = return_usp_fsp_location()
+            _, fsp_loc = update_usp_fsp_location()
 
             dt.full_smocking_pattern.plot(fsp_loc)
             dt.tmp_fsp = []
