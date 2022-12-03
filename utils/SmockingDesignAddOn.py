@@ -21,6 +21,11 @@ from bpy.types import Operator
 from bpy.types import (Panel, Operator)
 import os
 from scipy.spatial.distance import cdist
+import itertools
+
+from datetime import datetime
+import time
+
 
 # install scipy to blender's python
 # ref: https://blender.stackexchange.com/questions/5287/using-3rd-party-python-modules
@@ -237,20 +242,88 @@ class debug_func(Operator):
     bl_label = "function to test"
     
     def execute(self, context):
-        print('debugging...')
+        now = datetime.now()
+        current_time = now.strftime("%H:%M:%S")
+        print("Debugging....Current Time =", current_time)
+
         
+        initialize()
+    
+        context.scene.path_import = '/Users/jing/research/SmockingDesign/unit_smocking_patterns/arrow.usp'
+        bpy.ops.object.import_unit_pattern()
+
+                
+        bpy.ops.object.create_full_smocking_pattern()
+
+        
+        bpy.ops.object.sg_draw_graph()
+
+
         dt = bpy.types.Scene.solver_data
 
-        fsp = dt.full_smocking_pattern
 
-        SG = SmockedGraph(fsp)
-        SG.info()
-        SG.plot()
-        print( SG.return_max_dist_constraint_for_vtx_pair(1,2) )
+        fsp = dt.full_smocking_pattern
+        sg = dt.smocked_graph
+
+
+        # find the pairwise distance constraints for the underlay graph
+        
+        D = sg.return_pairwise_distance_constraint_for_underlay()
+
+        I = np.array(range(5))
+        J = np.array(range(2,7))
+
+        
+
+        res = get_mat_entry(D, I, J)
+
+        start_time = time.time()
+        constrained_vtx_pair = SG_find_underlay_constraints_exact(sg)
+        print('runtime: find constraints (exact): %f second' % (time.time() - start_time))
+
+        # print(constrained_vtx_pair)
+        
+
         return {'FINISHED'}
 
 
+
+def SG_find_underlay_constraints_exact(sg):
+    # for the smocked graph (sg)
+    # find the valid the distance constraints in exact way
+    # i.e., consider all pairs of vertices
+
+    D = sg.return_pairwise_distance_constraint_for_underlay()
+
+    # all combinations of (i,j,k) - a triplet of three vertices
+    c = nchoosek(range(sg.nv_underlay), 3)
+    # we then check how many of them are useless
+    # in exact way
+    useless_constr = []
+    for i, j, k in zip(c[:,0], c[:,1], c[:,2]):
+        if D[i,j] + D[i, k] < D[k, j]:
+            useless_constr.append([k,j])
+
+        if D[i,j] + D[k,j] <  D[i,k]:
+            useless_constr.append([i,k])
+
+        if D[i,k] + D[k,j] < D[i,j]:
+            useless_constr.append([i,j])
+
+
+    # remove redundant pairs
+    useless_constr = sort_edge(useless_constr)
+
+    # all vertex pairs
+    A = nchoosek(range(sg.nv_underlay), 2)
     
+    idx_diff, _ = setdiffnd(A, useless_constr)
+    
+    constrained_vtx_pair = A[idx_diff]
+
+    return constrained_vtx_pair
+
+
     
 
 # ========================================================================
@@ -278,6 +351,8 @@ class SmockedGraph():
 
         self.nv = len(self.V)
         self.ne = len(self.E)
+        self.nv_pleat = len(self.vid_pleat)
+        self.nv_underlay = len(self.vid_underlay)
         self.full_smocking_pattern = fsp
 
 
@@ -291,21 +366,42 @@ class SmockedGraph():
         d = cdist(fsp.V[vid1_sp, :], fsp.V[vid2_sp, :])
         return np.min(d)
 
+
     def return_max_dist_constraint_for_edge(self, eid):
         return self.return_max_dist_constraint_for_vtx_pair(self.E[eid, 0], self.E[eid, 1])
+
+
+    
+    def return_pairwise_distance_constraint_for_underlay(self):
+        num = self.nv_underlay
+        D = np.zeros((num, num))
+        for i in range(num-1):
+            for j in range(1,num):
+                dist = self.return_max_dist_constraint_for_vtx_pair(i,j)
+                D[i,j] = dist
+                D[j,i] = dist
+        return D
+
 
 
     def is_vtx_pleat(self, vid):
         return vid in self.vid_pleat
 
+
+
     def is_vtx_underlay(self, vid):
         return vid in self.vid_underlay
+
+
 
     def is_edge_pleat(self, eid):
         return eid in self.eid_pleat
 
+    
     def is_edge_underlay(self, eid):
         return eid in self.eid_underlay
+
+
 
     def info(self):
         print('------------------------------')
@@ -313,6 +409,9 @@ class SmockedGraph():
         print('------------------------------')
         print('No. vertices %d : %d underlay + %d pleat' % (self.nv, len(self.vid_underlay), len(self.vid_pleat) ) )
         print('No. edges %d : %d underlay + %d pleat' % (self.ne, len(self.eid_underlay), len(self.eid_pleat) ) )
+
+
+
         
         
     def plot(self, 
@@ -1280,6 +1379,10 @@ def create_grid(num_x, num_y):
 
     return gx, gy
 
+
+
+
+
 def add_margin_to_grid(x_ticks, y_ticks,
                        m_left=0, m_right=0, m_top=0, m_bottom=0):
     
@@ -1440,6 +1543,8 @@ def combine_two_smocking_patterns(fsp1, fsp2, axis, dist, shift):
          'P1 + P2 combined')
 
     return fsp    
+
+
 
 
 def deform_regular_into_radial_grid(V, ratio):
@@ -1629,6 +1734,44 @@ def extract_smocked_graph_from_full_smocking_pattern(fsp, init_type = 'center'):
     eid_pleat = np.setdiff1d(range(len(E_sg)), eid_underlay)
 
     return V_sg, E_sg, F_sg, dict_sg2sp, dict_sp2sg, vid_underlay, vid_pleat, eid_underlay, eid_pleat
+
+
+
+# TODO: faster solution? now is returning rows with zero L1 distance
+def setdiffnd(A, B):
+    # A, B: n-dim array
+    # set difference between A and B by rows
+
+    # find the row ID with zero L1 distance
+    idx = np.where(abs((A[:,np.newaxis,:] - B)).sum(axis=2)==0)
+
+    # A[idx[0]] is equivalent to B[idx[1]]
+    idx_diff = np.setdiff1d(range(len(A)), idx[0])
+
+    return idx_diff, idx
+
+
+
+
+def nchoosek(ls_in, n=1):
+    c = []
+    for i in itertools.combinations(ls_in, n):
+        c.append(list(i))
+    return np.array(c)
+
+
+
+def get_mat_entry(M, I, J):
+    res = []
+    if len(I) == len(J):
+        for i, j in zip(I, J):
+            res.append([i,j,M[i,j]])
+    else:
+        print('Error: the indeices are not consistent')
+
+    return np.array(res)
+    
+
 
 
 
@@ -2457,7 +2600,19 @@ class SG_draw_graph(Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        print('Not done yet"/')
+        dt = bpy.types.Scene.solver_data
+
+        fsp = dt.full_smocking_pattern
+
+        start_time = time.time()
+        SG = SmockedGraph(fsp)
+        print('runtime: extract smocked graph: %f second' % (time.time() - start_time))
+
+        dt.smocked_graph = SG # save the data to the scene
+
+        SG.info()
+        SG.plot()
+
         return {'FINISHED'}
 
 
