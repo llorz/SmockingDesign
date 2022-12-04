@@ -14,15 +14,24 @@ bl_info = {
 
 import bpy
 import bmesh
+from bpy.types import Operator
+from bpy.types import (Panel, Operator)
+
+
 import math
 from mathutils import Vector
 import numpy as np
-from bpy.types import Operator
-from bpy.types import (Panel, Operator)
-import os
 from scipy.spatial.distance import cdist
+from scipy.spatial.distance import pdist
+from scipy.spatial.distance import squareform
+from scipy.optimize import minimize
+from scipy.optimize import NonlinearConstraint
+from scipy.optimize import Bounds
+
 import itertools
 
+
+import os
 from datetime import datetime
 import time
 
@@ -161,7 +170,7 @@ PROPS = [
     
 # to extract the stitching lines from user selection
 
-class StitchingLinesProp():
+class GlobalVariable():
     currentDrawing = []
     # so we dont show multiple current drawings when repeated click "Done"
     if_curr_drawing_is_shown = False 
@@ -169,6 +178,7 @@ class StitchingLinesProp():
     savedStitchingLines = []
     colSaved = col_blue
     colTmp = col_yellow
+    runtime_log = []
 
 
 
@@ -185,6 +195,17 @@ class SolverData():
     tmp_fsp2 = []
     tmp_fsp = []
 
+class OptiData():
+    C_underlay_eq = []
+    C_underlay_neq = []
+    C_pleat_eq = []
+    C_pleat_neq = []
+    weights = {'w_underlay_eq': 1e5, 
+               'w_underlay_neq': 1e2,
+               'eps_enq': -1e-6,
+               'w_pleat_eq': 1e5,
+               'w_pleat_neq': 1e3}
+
 
 # ========================================================================
 #                         classes for the solver
@@ -196,17 +217,8 @@ class debug_clear(Operator):
     bl_label = "clear data in scene"
     
     def execute(self, context):
-        initialize()
-        props = bpy.types.Scene.sl_props
-        dt = bpy.types.Scene.solver_data
-        dt.unit_smocking_pattern = []
-        dt.full_smocking_pattern = []
-        dt.smocked_graph = []
-        dt.embeded_graph = []
-        dt.smocked_graph = []
-        dt.tmp_fsp1 = []
-        dt.tmp_fsp2 = []
-        dt.tmp_fsp = []
+        initialize_collections()
+        initialize_data()
 
         return {'FINISHED'}
 
@@ -246,12 +258,17 @@ class debug_func(Operator):
         current_time = now.strftime("%H:%M:%S")
         print("Debugging....Current Time =", current_time)
 
+
         
-        initialize()
+        initialize_collections()
+        initialize_data()
+
     
-        context.scene.path_import = '/Users/jing/research/SmockingDesign/unit_smocking_patterns/arrow.usp'
+        context.scene.path_import = '/Users/jing/research/SmockingDesign/unit_smocking_patterns/leaf.usp'
         bpy.ops.object.import_unit_pattern()
 
+        bpy.context.scene.num_x = 2
+        bpy.context.scene.num_y = 4
                 
         bpy.ops.object.create_full_smocking_pattern()
 
@@ -270,30 +287,182 @@ class debug_func(Operator):
         
         D = sg.return_pairwise_distance_constraint_for_underlay()
 
-        I = np.array(range(5))
-        J = np.array(range(2,7))
+        constrained_vtx_pair = SG_find_valid_underlay_constraints_exact(sg, D)
+        
+        # embed the underlay graph
 
+        # find the vtx_pair where the max_dist is reached
+        E_eq = sg.E[sg.eid_underlay, :]
+
+        # find the vtx_pair where the max_dist forms inequality constraints
+        idx, _ = setdiffnd(constrained_vtx_pair, E_eq)
+        E_neq = constrained_vtx_pair[idx, :]
+
+        # formulate the constraints 
+        C_eq = []
+        for i, j in zip(E_eq[:, 0], E_eq[:, 1]):
+            C_eq.append([i, j, D[i,j]])
+
+        C_eq = np.array(C_eq)
+
+        C_neq = []
+        for i, j in zip(E_neq[:, 0], E_neq[:, 1]):
+            C_neq.append([i, j, D[i,j]])
+        C_neq = np.array(C_neq)
         
 
-        res = get_mat_entry(D, I, J)
+        w_eq = 1e6
+        w_neq = 1e2
+        eps_neq = 0
 
+
+        X_underlay = sg.V[sg.vid_underlay, 0:2]
+
+        # use one equal constraint to rescale the initial embedding
+        # maybe converge faster
+        id_eq = 1
+        v1 = X_underlay[int(C_eq[id_eq, 0]), :]
+        v2 = X_underlay[int(C_eq[id_eq, 1]), :]
+        d12 = np.linalg.norm(v1 - v2)
+        e12 = C_eq[id_eq, 2]
+        scale = e12/d12
+
+        x0 = X_underlay.flatten()*scale
+
+
+        bounds = Bounds( -2*np.ones((len(x0),1)), 10*np.ones((len(x0),1)) )
+        
+        y_ini = opti_energy_sg_underlay(x0, C_eq, C_neq, w_eq, w_neq, eps_neq)
         start_time = time.time()
-        constrained_vtx_pair = SG_find_underlay_constraints_exact(sg)
-        print('runtime: find constraints (exact): %f second' % (time.time() - start_time))
+        #--------------------- Test 01
+        for w_eq in [1e8, 1e6, 1e4, 1e2]:
+            res = minimize(opti_energy_sg_underlay, 
+                           x0, 
+                           method='Nelder-Mead',
+                           args=(C_eq, C_neq, w_eq, w_neq, eps_neq), 
+                           options=opti_get_NelderMead_solver_options())
+            x0 = res.x
+            
+        msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
+        bpy.types.Scene.sl_props.runtime_log.append(msg)
 
-        # print(constrained_vtx_pair)
+
+        print_runtime()
+        
+        y_res = opti_energy_sg_underlay(res.x, C_eq, C_neq, w_eq, w_neq, eps_neq)
+
+
+        X = res.x.reshape(int(len(res.x)/2),2)
+
+        X = np.concatenate((X, np.zeros((len(X),1))), axis=1)
+
+
+        # print(X_underlay)
+        # print(X)
+        
+
+        print(y_ini, y_res)
+        
+        fval_max, fval_eq, fval_neq = opti_energy_sg_underlay(res.x, C_eq, C_neq, w_eq, w_neq, eps_neq, True)
+        
+        print(fval_max, fval_eq, fval_neq)
+
+        # X = X_underlay
+        trans = [0,-20, 0]
+        for eid in sg.eid_underlay:
+            vtxID = sg.E[eid, :]
+            pos = X[vtxID, :] + trans
+            draw_stitching_line(pos, col_red, "embed_underlay2_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+
+        for vid in range(len(X)):
+            pos = X[vid, :] + trans
+            add_text_to_scene(body='v'+str(vid), 
+                              location=tuple(pos), 
+                              scale=(1,1,1),
+                              obj_name='v'+str(vid),
+                              coll_name=COLL_NAME_SG)
+
         
 
         return {'FINISHED'}
 
 
+# TODO: need to update according the user input
+def opti_get_BFGS_solver_options():
+    bfgs_options =  {'disp': True, 
+                   'verbose':1, 
+                   'xtol':1e-6, 
+                   'ftol':1e-6, 
+                   'maxiter':1e6, 
+                   'maxfun':1e6}
 
-def SG_find_underlay_constraints_exact(sg):
+    return bfgs_options
+
+
+# TODO: need to update according the user input
+def opti_get_NelderMead_solver_options():
+    
+    nm_options =  {'disp': True, 
+                   'verbose':1, 
+                   'xtol':1e-6, 
+                   'ftol':1e-6, 
+                   'maxiter':1e6, 
+                   'maxfun':1e6}
+
+    return nm_options
+
+def opti_energy_sg_underlay(x_in,
+                            C_eq, 
+                            C_neq, 
+                            w_eq=1e2,
+                            w_neq=1e6, 
+                            eps_neq=-1e-3,
+                            if_return_all_terms=False):
+    # energy to embedding the underaly graph of the smocked graph
+    x = x_in.reshape(int(len(x_in)/2), 2) # x_in the flattened xy-coordinates of the underaly graph
+    D1 = squareform(pdist(x,'euclidean'))
+
+    # maximize the embedding: such that the vertices are far from eath other
+    fval_max = -np.sum(np.sum(D1))
+
+    # make sure the equality is satisfied
+    d_eq = get_mat_entry(D1, C_eq[:, 0], C_eq[:, 1])
+    fval_eq = sum(np.power(d_eq - C_eq[:,2], 2))
+
+    # make usre the inequality is satisfied
+    d_neq = get_mat_entry(D1, C_neq[:,0], C_neq[:, 1])
+    fval_neq = sum(d_neq - C_neq[:,2] > eps_neq)
+
+    fval = fval_max + w_eq*fval_eq + w_neq*fval_neq
+    # print(fval)
+    if if_return_all_terms: # for debug
+        return fval_max, fval_eq, fval_neq
+    else:
+        return fval
+
+
+
+# TOOD: 
+def SG_find_valid_underlay_constraints_approx(sg, D):
+    # find inexact distance constraints if the underlay graph is too large
+    # check every triplet of vertices can be time consuming
+
+    print('Not done yet:/')
+
+
+
+
+def SG_find_valid_underlay_constraints_exact(sg, D):
     # for the smocked graph (sg)
     # find the valid the distance constraints in exact way
     # i.e., consider all pairs of vertices
 
-    D = sg.return_pairwise_distance_constraint_for_underlay()
+    # input: D stores the pairwise distance constraint for the underlay graph
+    # extracted from the smocking pattern (to make sure the fabric won't break)
+    # but not all of them are useful for embedding optimization
+
+    start_time = time.time()
+        
 
     # all combinations of (i,j,k) - a triplet of three vertices
     c = nchoosek(range(sg.nv_underlay), 3)
@@ -320,6 +489,8 @@ def SG_find_underlay_constraints_exact(sg):
     idx_diff, _ = setdiffnd(A, useless_constr)
     
     constrained_vtx_pair = A[idx_diff]
+    msg = 'runtime: find constraints (exact): %f second' % (time.time() - start_time)
+    bpy.types.Scene.sl_props.runtime_log.append(msg)
 
     return constrained_vtx_pair
 
@@ -404,12 +575,10 @@ class SmockedGraph():
 
 
     def info(self):
-        print('------------------------------')
-        print('Smocked Graph:')
-        print('------------------------------')
+        print('\n----------------------- Info: Smocked Graph -----------------------')
         print('No. vertices %d : %d underlay + %d pleat' % (self.nv, len(self.vid_underlay), len(self.vid_pleat) ) )
         print('No. edges %d : %d underlay + %d pleat' % (self.ne, len(self.eid_underlay), len(self.eid_pleat) ) )
-
+        print('-------------------------------------------------------------------\n')
 
 
         
@@ -417,7 +586,8 @@ class SmockedGraph():
     def plot(self, 
              location=(0,0), 
              if_show_separate_underlay=True,
-             if_show_separate_pleat=True):
+             if_show_separate_pleat=True,
+             if_debug=True):
         initialize_pattern_collection(COLL_NAME_SG, COLL_NAME_SG_SL)        
         construct_object_from_mesh_to_scene(self.V, self.F, MESH_NAME_SG, COLL_NAME_SG)
         mesh = bpy.data.objects[MESH_NAME_SG]
@@ -454,6 +624,15 @@ class SmockedGraph():
                               scale=(1,1,1),
                               obj_name='underlay_graph_annotation',
                               coll_name=COLL_NAME_SG)
+
+            if if_debug: # add vtxID
+                for vid in self.vid_underlay:
+                    pos = get_vtx_pos(mesh, [vid]) + trans
+                    add_text_to_scene(body='v'+str(vid), 
+                                      location=tuple(pos[0]), 
+                                      scale=(1,1,1),
+                                      obj_name='v'+str(vid),
+                                      coll_name=COLL_NAME_SG)
 
 
 
@@ -537,17 +716,16 @@ class UnitSmockingPattern():
             vtxID = self.get_vtx_in_stitching_line(lid)
 
             pos = get_vtx_pos(mesh, np.array(vtxID))
+            print(pos)
  
             draw_stitching_line(pos, col_blue, "stitching_line_" + str(lid), STROKE_SIZE, COLL_NAME_USP_SL)
 
 
     def info(self):
-        print('------------------------------')
-        print('Unit Smocking Pattern:')
-        print('------------------------------')
+        print('\n------------------- Info: Unit Smocking Pattern -------------------')
         print('base_x: ' + str(self.base_x) + ', base_y: ' + str(self.base_y))
         print('No. stitching lines: ' + str(len(self.stitching_lines)))
-
+        print('-------------------------------------------------------------------\n')
 
 
 
@@ -709,647 +887,13 @@ class SmockingPattern():
             
     
     def info(self):
-        print('------------------------------')
-        print('Full Smocking Pattern:')
-        print('------------------------------')
+        print('\n------------------- Info: Full Smocking Pattern -------------------')
         print('No. vertices: ' + str(len(self.V)))
         print('No. faces: ' + str(len(self.F)))
         print('No. stitching lines: ' + str(max(self.stitching_points_line_id)+1))
         print('No. unit patches: ' + str(max(self.stitching_points_patch_id)+1))
         print(self.stitching_points_patch_id)
-
-    
-# ========================================================================
-#                          Utility Functions
-# ========================================================================
-
-def delete_all_collections():    
-    for coll in bpy.data.collections:
-        bpy.data.collections.remove(coll)
-
-def clean_objects_in_collection(coll_name):
-    coll = bpy.data.collections[coll_name]
-    for item in coll.objects:
-        bpy.data.objects.remove(item)    
-
-def delete_all_gpencil_objects():
-    for obj in bpy.data.objects:
-        if obj.type == 'GPENCIL':
-            bpy.data.objects.remove(obj)
-
-
-
-
-def delete_all_objects() -> None:
-    for item in bpy.data.objects:
-        bpy.data.objects.remove(item)
-
-
-
-
-def clean_one_object(obj_name):
-    for item in bpy.data.objects:
-        if item.name  == obj_name:
-            bpy.data.objects.remove(item)
-
-
-
-def select_one_object(obj):
-    bpy.ops.object.select_all(action='DESELECT')
-    bpy.context.view_layer.objects.active = obj
-    obj.select_set(True)
-
-
-        
-def deselect_all_vert_in_mesh(obj):
-    bm = bmesh.from_edit_mesh(obj.data)     
-    for v in bm.verts:
-        v.select = False
-
-
-
-def find_index_in_list(my_list, my_val):
-    return [i for i, x in enumerate(my_list) if x == my_val]
-
-    
-
-def add_text_to_scene(body="test",
-                      location=(0,0,0),
-                      scale=(1,1,1),
-                      obj_name="font_obj",
-                      coll_name=COLL_NAME_FSP):
-                          
-    font_curve = bpy.data.curves.new(type="FONT", name="Font Curve")
-    font_curve.body = body
-    font_obj = bpy.data.objects.new(name=obj_name, object_data=font_curve)
-    font_obj.location = location
-    font_obj.scale = scale
-#    bpy.context.scene.collection.children[coll_name].objects.link(font_obj)
-    bpy.data.collections[coll_name].objects.link(font_obj)
-
-
-
-def get_curr_vtx_pos(mesh, vid1):
-    p1 = mesh.matrix_world.to_3x3() @ mesh.data.vertices[vid1].co
-    p1[0] += mesh.matrix_world[0][3]
-    p1[1] += mesh.matrix_world[1][3]
-    p1[2] += mesh.matrix_world[2][3]
-    return list(p1)
-
-def get_translation_of_mesh(mesh_name):
-    mesh = bpy.data.objects[mesh_name]
-    return [mesh.matrix_world[0][3], mesh.matrix_world[1][3], mesh.matrix_world[2][3]]
-
-
-
-
-def get_vtx_pos(mesh, vids):
-    p = [];
-    for vid in vids:
-        p.append(get_curr_vtx_pos(mesh, vid))
-    return p
-
-
-
-def write_fsp_to_obj(fsp, filepath):
-
-    with open(filepath, 'w') as f:
-        f.write("# OBJ file\n")
-        # write vertices - z-val = 0
-        for v_id in range(len(fsp.V)):
-            f.write("v %.4f %.4f %.4f\n" % (fsp.V[v_id, 0], fsp.V[v_id, 1], 0))
-            
-        # write faces
-        for f_id in range(len(fsp.F)):
-            f.write("f")
-            p = fsp.F[f_id]
-            for v_id in range(len(p)):
-                f.write(" %d" % (p[v_id] + 1))
-            f.write("\n")
-
-        # write edges
-        for e_id in range(len(fsp.E)):
-            f.write("e %d %d\n" % (fsp.E[e_id, 0] + 1, fsp.E[e_id, 1] + 1))
-    
-        # add stiching lines to the object
-        for lid in range(fsp.num_stitching_lines()):
-            vtxID = fsp.get_vid_in_stitching_line(lid)
-            
-            for ii in range(len(vtxID)-1):
-                # f.write('l ' + str(vtxID[ii]+1) + ' ' + str(vtxID[ii+1]+1) + '\n')
-                f.write('l %d %d\n' % (vtxID[ii] + 1 , vtxID[ii+1] + 1))
-                
-
-def read_obj_to_fsp(file_name, 
-                    pattern_name = "FllPattern", 
-                    coll_name=COLL_NAME_FSP,
-                    stroke_coll_name = COLL_NAME_FSP_SL,
-                    annotation_text="Full Smocking Pattern"):       
-    V, F, E, all_sp_lid, all_sp_vid = [], [], [], [], []
-
-    file = open(file_name, 'r')
-    Lines = file.readlines()
-    line_end = None
-    lid = -1
-
-    for line in Lines:
-        elems = line.split()
-        if elems:
-            if elems[0] == "v":
-                vtx = []
-                for ii in range(1, len(elems)):
-                    vtx.append(float(elems[ii]))
-                V.append(vtx)
-
-            elif elems[0] == "f":
-                face = []
-                for jj in range(1, len(elems)):
-                    face.append(int(elems[jj]) - 1)
-                F.append(np.array(face))
-            elif elems[0] == "e":
-                edge = []
-                for kk in range(1, len(elems)):
-                    edge.append(int(elems[kk]) - 1)
-                E.append(edge)
-
-            elif elems[0] == "l":
-                if int(elems[1]) != line_end:
-                    lid += 1 # not the same stitching line
-
-                    for ii in range(2): # each line has two vtx
-                        all_sp_vid.append(int(elems[ii+1]) - 1)
-                        all_sp_lid.append(lid)                       
-
-                else: # same stitching line: only same the second point
-                    all_sp_vid.append(int(elems[2]) - 1)
-                    all_sp_lid.append(lid)
-
-                # update the line_end    
-                line_end = int(elems[2]) 
-
-
-    file.close()
-
-    E = np.array(E)
-    V = np.array(V)
-    all_sp = V[all_sp_vid]
-
-    fsp = SmockingPattern(V[:,0:2], F, E, 
-                          all_sp, all_sp_lid, [], all_sp_vid,
-                          pattern_name, coll_name, stroke_coll_name, annotation_text)
-
-    return fsp
-    
-    
-    
-def write_mesh_to_obj(mesh_name, save_dir, save_name):
-    mesh = bpy.data.objects[mesh_name]
-    select_one_object(mesh)
-    bpy.ops.export_scene.obj(filepath= save_dir + save_name, 
-                         check_existing=True, 
-                         filter_glob='*.obj;*.mtl', 
-                         use_selection=True, 
-                         use_animation=False, 
-                         use_mesh_modifiers=True, 
-                         use_edges=True, 
-                         use_smooth_groups=False, 
-                         use_smooth_groups_bitflags=False, 
-                         use_normals=True, 
-                         use_uvs=True, 
-                         use_materials=True, 
-                         use_triangles=False, 
-                         use_nurbs=False, 
-                         use_vertex_groups=False, 
-                         use_blen_objects=True, 
-                         group_by_object=False, 
-                         group_by_material=False, 
-                         keep_vertex_order=False, 
-                         global_scale=1.0, 
-                         path_mode='AUTO', 
-                         axis_forward='-Z', 
-                         axis_up='Y')
-
-# ---------------------BEGIN: write/read unit-smocking-pattern ------------------------
-
-def get_usp_from_saved_stitching_lines(all_sl, mesh, base_x, base_y):
-    all_sp = []
-    all_sp_lid = []
-    
-    lid = 0
-    # write the stiching lines
-    for line in all_sl:
-        
-        for vid in line:
-            pos = list(mesh.data.vertices[vid].co)
-            all_sp.append(pos)
-            all_sp_lid.append(lid)
-    
-        lid += 1
-    
-    usp = UnitSmockingPattern(base_x, base_y, all_sl, all_sp, all_sp_lid)
-              
-    return usp
-
-
-def write_usp(file_name, usp):
-    file = open(file_name, 'w')
-    file.write('gridX\t' + str(usp.base_x) + "\n")
-    file.write('gridY\t' + str(usp.base_y) + "\n")
-    
-    # write the stitching lint point IDs - for blender
-    for line in usp.stitching_lines:
-        file.write('sl\t')
-        for vid in line:
-            file.write(str(vid)+"\t")
-        file.write("\n")
-    
-    for ii in range(len(usp.stitching_points_line_id)):
-        pos = usp.stitching_points[ii]
-        
-        lid = usp.stitching_points_line_id[ii]
-        
-        file.write('sp \t' + str(lid) + '\t')
-            
-        for val in pos:
-            file.write(str(val)+"\t")
-        file.write("\n")        
-        
-    file.close()
-
-    
-    
-    
-def read_usp(file_name):
-    file = open(file_name, 'r')
-    Lines = file.readlines()
-    
-    all_sl = [] # the stitching line (vtx ID)
-    all_sp = [] # all stitching points (positions)
-    all_sp_lid = [] # the stitching lineID of each point
-    
-    for line in Lines:
-        elems = line.split()
-        if elems:
-            if elems[0] == "gridX":
-                base_x = int(elems[1])
-            
-            elif elems[0] =="gridY":
-                base_y = int(elems[1])
-            
-            elif elems[0] == "sl":
-                sl = []
-                for ii in range(1, len(elems)):
-                    sl.append(int(elems[ii]))
-                
-                all_sl.append(sl)
-            
-            elif elems[0] == "sp":
-                all_sp_lid.append(int(elems[1]))
-                all_sp.append([ float(elems[2]), float(elems[3]), float(elems[4]) ])
-            
-            else:    
-                pass
-    
-    usp = UnitSmockingPattern(base_x, base_y, all_sl, all_sp, all_sp_lid)
-        
-    return usp
-
-# ---------------------END: write/read unit-smocking-pattern ------------------------
-
-
-# ---------------------BEGIN: add strokes via gpencil ------------------------
-
-# Drawing with Gpencil:
-# Reference: 
-# https://gist.github.com/blender8r/4688b3f05640737236c856bc7df47bee
-# https://www.youtube.com/watch?v=csQNmnc5xQg
-
-def add_stroke_to_gpencil(pts, col, gpencil_name, line_width=12):
-    gpencil = bpy.data.grease_pencils[gpencil_name]
-        
-    gp_layer = gpencil.layers.new("lines")
-
-    gp_frame = gp_layer.frames.new(bpy.context.scene.frame_current)
-
-
-    gp_stroke = gp_frame.strokes.new()
-    gp_stroke.line_width = line_width
-    gp_stroke.start_cap_mode = 'ROUND'
-    gp_stroke.end_cap_mode = 'ROUND'
-    gp_stroke.use_cyclic = False
-    gp_stroke.points.add(len(pts))
-
-    for item, value in enumerate(pts):
-        gp_stroke.points[item].co = value
-        gp_stroke.points[item].pressure = 10
-        
-    mat = bpy.data.materials.new(name="Black")
-    bpy.data.materials.create_gpencil_data(mat)
-    gpencil.materials.append(mat)
-    mat.grease_pencil.show_fill = False
-#    mat.grease_pencil.fill_color = (1.0, 0.0, 1.0, 1.0)
-    mat.grease_pencil.color = (col[0], col[1], col[2], 1.0)
-    
-    if len(pts) > 2:
-        gp_stroke.points[0].pressure = 2
-        gp_stroke.points[-1].pressure = 2
-    
-    
-
-def create_line_stroke_from_gpencil(name="GPencil", line_width=12, coll_name=COLL_NAME_FSP):
-    gpencil_data = bpy.data.grease_pencils.new(name)
-    gpencil = bpy.data.objects.new(gpencil_data.name, gpencil_data)
-#    bpy.context.collection.objects.link(gpencil)
-#    bpy.context.scene.collection.children[coll_name].objects.link(gpencil)
-    bpy.data.collections[coll_name].objects.link(gpencil)
-    gp_layer = gpencil_data.layers.new("lines")
-
-    gp_frame = gp_layer.frames.new(bpy.context.scene.frame_current)
-
-    gp_stroke = gp_frame.strokes.new()
-    gp_stroke.line_width = line_width
-    gp_stroke.start_cap_mode = 'ROUND'
-    gp_stroke.end_cap_mode = 'ROUND'
-    gp_stroke.use_cyclic = False
-
-    return gpencil, gp_stroke
-    
-
-def draw_stitching_line(pts, col, name="stitching_line", line_width=12, coll_name=COLL_NAME_FSP): 
-    gpencil, gp_stroke = create_line_stroke_from_gpencil(name, line_width, coll_name)
-    
-    if len(pts) == 2: # we add a midpoint to make the drawing looks nicer
-        gp_stroke.points.add(len(pts)+1)
-        
-        gp_stroke.points[0].co = pts[0]
-        gp_stroke.points[0].pressure = 2
-
-        gp_stroke.points[1].co = (pts[0] + pts[1])/2.0
-        gp_stroke.points[1].pressure = 10
-
-        gp_stroke.points[2].co = pts[1]
-        gp_stroke.points[2].pressure = 2
-
-    else:
-        gp_stroke.points.add(len(pts))
-        
-        for item, value in enumerate(pts):
-            gp_stroke.points[item].co = value
-            gp_stroke.points[item].pressure = 10
-    
-
-
-        
-    mat = bpy.data.materials.new(name="Black")
-    bpy.data.materials.create_gpencil_data(mat)
-    gpencil.data.materials.append(mat)
-    mat.grease_pencil.show_fill = False
-#    mat.grease_pencil.fill_color = (1.0, 0.0, 1.0, 1.0)
-    mat.grease_pencil.color = (col[0], col[1], col[2], 1.0)
-    
-    if len(pts) > 2:
-        gp_stroke.points[0].pressure = 2
-        gp_stroke.points[-1].pressure = 2
-#       gp_stroke.points[0].vertex_color = (1.0, 0.0, 0.0, 1.0)
-#       gp_stroke.points[-1].vertex_color = (0.0, 1.0, 0.0, 1.0)
-
-
-def draw_saved_stitching_lines(context, coll_name=COLL_NAME_FSP):
-    props = bpy.context.scene.sl_props
-    print(props.savedStitchingLines)
-    for i in range(len(props.savedStitchingLines)):
-        vids = props.savedStitchingLines[i]
-        obj = bpy.data.objects[MESH_NAME_USP]
-        pts = get_vtx_pos(obj, vids)
-        draw_stitching_line(pts, props.colSaved, "stitching_line_" + str(i), STROKE_SIZE, coll_name)
-        
-        
-            
-# ---------------------END: add strokes via gpencil ------------------------
-
-            
-def construct_object_from_mesh_to_scene(V, F, mesh_name, coll_name=COLL_NAME_FSP):
-    # input: V nv-by-2(3) array, F list of array
-    
-    # convert F into a list of list
-    faces = F
-    # convert V into a list of Vector()
-    verts = [Vector((v[0], v[1], v[2] if len(v) > 2 else 0)) for v in V]
-    
-    # create mesh in blender
-    mesh = bpy.data.meshes.new(mesh_name)
-    mesh.from_pydata(verts, [], faces)
-    mesh.update(calc_edges=False) # we use our own edgeID
-    object = bpy.data.objects.new(mesh_name, mesh)
-    # link the object to the scene
-    bpy.context.scene.collection.children[coll_name].objects.link(object)
-    
-
-def show_mesh(mesh, scale=(1,1,1), location=(0,0,0)):
-    mesh.scale = scale
-    mesh.location = location
-    mesh.show_axis = False
-    mesh.show_wire = True
-    mesh.display_type = 'WIRE'
-    select_one_object(mesh)
-
-
-
-def generate_grid_for_unit_pattern(base_x, base_y, if_add_diag=False):
-    # there is some but in blender subdivison
-    # instead, manually create a grid
-    
-    gx, gy = create_grid(base_x, base_y)
-
-    F, V, _ = extract_graph_from_meshgrid(gx, gy, if_add_diag)
-
-    construct_object_from_mesh_to_scene(V, F, MESH_NAME_USP, COLL_NAME_USP)
-    
-    mesh = bpy.data.objects[MESH_NAME_USP]
-
-    usp_loc, _ = update_usp_fsp_location()
-
-    show_mesh(mesh,
-        scale=(1,1,1),
-        location=(usp_loc[0], usp_loc[1], 0))
-
-    return mesh, F, V
-    
-
-def generate_tiled_grid_for_full_pattern(len_x, len_y, if_add_diag=True):
-    # create the full grid with size len_x by len_y
-    gx, gy = create_grid(len_x, len_y)
-    
-    F, V, E = extract_graph_from_meshgrid(gx, gy, if_add_diag)
-    
-    construct_object_from_mesh_to_scene(V, F, MESH_NAME_FSP, COLL_NAME_FSP)
-    
-    mesh = bpy.data.objects[MESH_NAME_FSP]
-
-    _, fsp_loc = update_usp_fsp_location()
-    
-    show_mesh(mesh, 
-              scale=(1,1,1), 
-              location=(fsp_loc[0], fsp_loc[1], 0))
-    
-                
-    return mesh, F, V, E
-    
-        
-
-def find_matching_rowID(V, pos):
-    # V: a list of vtx positions
-    # pos: the query position
-    ind = np.where(np.all(np.array(V) == np.array(pos), axis=1))
-    return ind
-
-
-        
-
-def refresh_stitching_lines():  
-    all_sp = []
-    all_sp_lid = []
-    lid = 0
-    
-    trans = get_translation_of_mesh(MESH_NAME_FSP) 
-    
-    # check the remaining stitching lines
-    saved_sl_names = []
-    for obj in bpy.data.collections[COLL_NAME_FSP_SL].objects:
-        saved_sl_names.append(obj.name)
-#    print(saved_sl_names)
-    
-    for sl_name in saved_sl_names:
-        gp = bpy.data.grease_pencils[sl_name]
-        pts = gp.layers.active.active_frame.strokes[0].points
-
-        for p in pts:
-            # p is in the world coordinate
-            # need to translate it back to the grid-coordinate
-            all_sp.append([p.co[0]-trans[0], p.co[1]-trans[1], p.co[2]-trans[2]])
-            all_sp_lid.append(lid)
-        lid += 1
-        
-
-    all_sp_pid = all_sp_lid # now patchID is useless
-    
-    return all_sp, all_sp_lid, all_sp_pid
-
-
-
-
-    
-def initialize():
-    delete_all_collections()
-    delete_all_objects()
-
-    initialize_pattern_collection(COLL_NAME_USP, COLL_NAME_USP_SL)
-    initialize_pattern_collection(COLL_NAME_FSP, COLL_NAME_FSP_SL)
-    initialize_pattern_collection(COLL_NAME_P1, COLL_NAME_P1_SL)
-    initialize_pattern_collection(COLL_NAME_P2, COLL_NAME_P2_SL)
-    initialize_pattern_collection(COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL)
-    initialize_pattern_collection(COLL_NAME_SG, COLL_NAME_SG_SL)
-    
-
-
-
-def initialize_pattern_collection(coll_name, stroke_coll_name):
-    if_coll_exist = False
-
-    for coll in bpy.data.collections:
-        # if coll_name in coll.name:
-        if coll_name == coll.name.split(".")[0]:
-            if_coll_exist = True
-
-    if not if_coll_exist:
-
-        my_coll = bpy.data.collections.new(coll_name)
-        bpy.context.scene.collection.children.link(my_coll)
-
-        my_coll_strokes = bpy.data.collections.new(stroke_coll_name)
-        my_coll.children.link(my_coll_strokes)
-    
-
-    for c in [coll_name, stroke_coll_name]:
-            clean_objects_in_collection(c)
-
-
-
-
-#-------------------------  update the layout to avoid overlapping
-
-
-# TODO: make the layout better
-def update_tmp_pattern_location():
-    dt = bpy.types.Scene.solver_data
-
-    fsp1 = dt.tmp_fsp1  
-    fsp2 = dt.tmp_fsp2
-    fsp3 = dt.tmp_fsp
-
-    # initialize the location
-
-    # for each pattern the origin is at (0,0), which is not necessarily at the left-bottom corner
-
-    if fsp1 != []:
-        fsp1_loc = [-fsp1.return_pattern_width() - min(fsp1.V[:,0]) - LAYOUT_X_SHIFT, -min(fsp1.V[:, 1])]
-    else:
-        fsp1_loc = [-10,2]
-
-    if fsp2 != []:
-        fsp2_loc = [-fsp2.return_pattern_width() - min(fsp2.V[:,0]) - LAYOUT_X_SHIFT, -min(fsp2.V[:, 1])]
-    else:
-        fsp2_loc = [-10,2]
-
-    if fsp3 != []:
-        fsp3_loc = [-fsp3.return_pattern_width() - min(fsp3.V[:,0]) - LAYOUT_X_SHIFT, -min(fsp3.V[:, 1])]
-    else:
-        fsp3_loc = [-10,2]
-
-    # update the location
-
-    if fsp3 != []:     
-
-        fsp2_loc[1] += fsp3_loc[1] + fsp3.return_pattern_height()  + LAYOUT_Y_SHIFT
-
-        if fsp2 != []:      
-
-            fsp1_loc[1] += fsp2_loc[1] + fsp2.return_pattern_height()  + LAYOUT_Y_SHIFT
-
-        else:
-
-            fsp1_loc[1] += fsp3_loc[1] + fsp3.return_pattern_height()  + LAYOUT_Y_SHIFT
-
-    elif fsp2 != []:
-
-        fsp1_loc[1] += fsp2_loc[1] + fsp2.return_pattern_height()  + LAYOUT_Y_SHIFT
-
-
-
-    return fsp1_loc, fsp2_loc, fsp3_loc
-
-
-
-def update_usp_fsp_location():
-    dt = bpy.types.Scene.solver_data
-    usp = dt.unit_smocking_pattern
-    fsp = dt.full_smocking_pattern
-
-    usp_loc = [0,5]
-    fsp_loc = [0,0]
-
-    if fsp != []:
-        fsp_loc[0] -= min(fsp.V[:,0])
-        fsp_loc[1] -= min(fsp.V[:,1])
-        usp_loc[1] = max(usp_loc[1], fsp.return_pattern_height() + LAYOUT_USP_FSP_SPACE)
-
-    return usp_loc, fsp_loc
-
-
-def update_smocked_graph_location():
-    print('not done yet')
-
-
+        print('-------------------------------------------------------------------\n')
 
 # ========================================================================
 #                      Core functions for smocking pattern
@@ -1361,6 +905,7 @@ def sort_edge(edges):
     # return the unique edges
     e_sort = [np.array([min(e), max(e)]) for e in edges]
     e_unique = np.unique(e_sort, axis = 0)
+    e_unique = np.delete(e_unique, np.where(e_unique[:,0] == e_unique[:, 1]), axis=0)
     return e_unique
 
 
@@ -1765,12 +1310,667 @@ def get_mat_entry(M, I, J):
     res = []
     if len(I) == len(J):
         for i, j in zip(I, J):
-            res.append([i,j,M[i,j]])
+            res.append(M[int(i), int(j)])
     else:
         print('Error: the indeices are not consistent')
 
     return np.array(res)
     
+
+
+
+    
+# ========================================================================
+#                          Utility Functions
+# ========================================================================
+
+def delete_all_collections():    
+    for coll in bpy.data.collections:
+        bpy.data.collections.remove(coll)
+
+def clean_objects_in_collection(coll_name):
+    coll = bpy.data.collections[coll_name]
+    for item in coll.objects:
+        bpy.data.objects.remove(item)    
+
+def delete_all_gpencil_objects():
+    for obj in bpy.data.objects:
+        if obj.type == 'GPENCIL':
+            bpy.data.objects.remove(obj)
+
+
+
+
+def delete_all_objects() -> None:
+    for item in bpy.data.objects:
+        bpy.data.objects.remove(item)
+
+
+
+
+def clean_one_object(obj_name):
+    for item in bpy.data.objects:
+        if item.name  == obj_name:
+            bpy.data.objects.remove(item)
+
+
+
+def select_one_object(obj):
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+
+
+        
+def deselect_all_vert_in_mesh(obj):
+    bm = bmesh.from_edit_mesh(obj.data)     
+    for v in bm.verts:
+        v.select = False
+
+
+
+def find_index_in_list(my_list, my_val):
+    return [i for i, x in enumerate(my_list) if x == my_val]
+
+    
+
+def add_text_to_scene(body="test",
+                      location=(0,0,0),
+                      scale=(1,1,1),
+                      obj_name="font_obj",
+                      coll_name=COLL_NAME_FSP):
+                          
+    font_curve = bpy.data.curves.new(type="FONT", name="Font Curve")
+    font_curve.body = body
+    font_obj = bpy.data.objects.new(name=obj_name, object_data=font_curve)
+    font_obj.location = location
+    font_obj.scale = scale
+#    bpy.context.scene.collection.children[coll_name].objects.link(font_obj)
+    bpy.data.collections[coll_name].objects.link(font_obj)
+
+
+
+def get_curr_vtx_pos(mesh, vid1):
+    p1 = mesh.matrix_world.to_3x3() @ mesh.data.vertices[vid1].co
+    p1[0] += mesh.matrix_world[0][3]
+    p1[1] += mesh.matrix_world[1][3]
+    p1[2] += mesh.matrix_world[2][3]
+    return list(p1)
+
+def get_translation_of_mesh(mesh_name):
+    mesh = bpy.data.objects[mesh_name]
+    return [mesh.matrix_world[0][3], mesh.matrix_world[1][3], mesh.matrix_world[2][3]]
+
+
+
+
+def get_vtx_pos(mesh, vids):
+    p = [];
+    for vid in vids:
+        p.append(get_curr_vtx_pos(mesh, vid))
+    return p
+
+
+
+def write_fsp_to_obj(fsp, filepath):
+
+    with open(filepath, 'w') as f:
+        f.write("# OBJ file\n")
+        # write vertices - z-val = 0
+        for v_id in range(len(fsp.V)):
+            f.write("v %.4f %.4f %.4f\n" % (fsp.V[v_id, 0], fsp.V[v_id, 1], 0))
+            
+        # write faces
+        for f_id in range(len(fsp.F)):
+            f.write("f")
+            p = fsp.F[f_id]
+            for v_id in range(len(p)):
+                f.write(" %d" % (p[v_id] + 1))
+            f.write("\n")
+
+        # write edges
+        for e_id in range(len(fsp.E)):
+            f.write("e %d %d\n" % (fsp.E[e_id, 0] + 1, fsp.E[e_id, 1] + 1))
+    
+        # add stiching lines to the object
+        for lid in range(fsp.num_stitching_lines()):
+            vtxID = fsp.get_vid_in_stitching_line(lid)
+            
+            for ii in range(len(vtxID)-1):
+                # f.write('l ' + str(vtxID[ii]+1) + ' ' + str(vtxID[ii+1]+1) + '\n')
+                f.write('l %d %d\n' % (vtxID[ii] + 1 , vtxID[ii+1] + 1))
+                
+
+def read_obj_to_fsp(file_name, 
+                    pattern_name = "FllPattern", 
+                    coll_name=COLL_NAME_FSP,
+                    stroke_coll_name = COLL_NAME_FSP_SL,
+                    annotation_text="Full Smocking Pattern"):       
+    V, F, E, all_sp_lid, all_sp_vid = [], [], [], [], []
+
+    file = open(file_name, 'r')
+    Lines = file.readlines()
+    line_end = None
+    lid = -1
+
+    for line in Lines:
+        elems = line.split()
+        if elems:
+            if elems[0] == "v":
+                vtx = []
+                for ii in range(1, len(elems)):
+                    vtx.append(float(elems[ii]))
+                V.append(vtx)
+
+            elif elems[0] == "f":
+                face = []
+                for jj in range(1, len(elems)):
+                    face.append(int(elems[jj]) - 1)
+                F.append(np.array(face))
+            elif elems[0] == "e":
+                edge = []
+                for kk in range(1, len(elems)):
+                    edge.append(int(elems[kk]) - 1)
+                E.append(edge)
+
+            elif elems[0] == "l":
+                if int(elems[1]) != line_end:
+                    lid += 1 # not the same stitching line
+
+                    for ii in range(2): # each line has two vtx
+                        all_sp_vid.append(int(elems[ii+1]) - 1)
+                        all_sp_lid.append(lid)                       
+
+                else: # same stitching line: only same the second point
+                    all_sp_vid.append(int(elems[2]) - 1)
+                    all_sp_lid.append(lid)
+
+                # update the line_end    
+                line_end = int(elems[2]) 
+
+
+    file.close()
+
+    E = np.array(E)
+    V = np.array(V)
+    all_sp = V[all_sp_vid]
+
+    fsp = SmockingPattern(V[:,0:2], F, E, 
+                          all_sp, all_sp_lid, [], all_sp_vid,
+                          pattern_name, coll_name, stroke_coll_name, annotation_text)
+
+    return fsp
+    
+    
+    
+def write_mesh_to_obj(mesh_name, save_dir, save_name):
+    mesh = bpy.data.objects[mesh_name]
+    select_one_object(mesh)
+    bpy.ops.export_scene.obj(filepath= save_dir + save_name, 
+                         check_existing=True, 
+                         filter_glob='*.obj;*.mtl', 
+                         use_selection=True, 
+                         use_animation=False, 
+                         use_mesh_modifiers=True, 
+                         use_edges=True, 
+                         use_smooth_groups=False, 
+                         use_smooth_groups_bitflags=False, 
+                         use_normals=True, 
+                         use_uvs=True, 
+                         use_materials=True, 
+                         use_triangles=False, 
+                         use_nurbs=False, 
+                         use_vertex_groups=False, 
+                         use_blen_objects=True, 
+                         group_by_object=False, 
+                         group_by_material=False, 
+                         keep_vertex_order=False, 
+                         global_scale=1.0, 
+                         path_mode='AUTO', 
+                         axis_forward='-Z', 
+                         axis_up='Y')
+
+# ---------------------BEGIN: write/read unit-smocking-pattern ------------------------
+
+def get_usp_from_saved_stitching_lines(all_sl, mesh, base_x, base_y):
+    all_sp = []
+    all_sp_lid = []
+    
+    lid = 0
+    # write the stiching lines
+    for line in all_sl:
+        
+        for vid in line:
+            pos = list(mesh.data.vertices[vid].co)
+            all_sp.append(pos)
+            all_sp_lid.append(lid)
+    
+        lid += 1
+    
+    usp = UnitSmockingPattern(base_x, base_y, all_sl, all_sp, all_sp_lid)
+              
+    return usp
+
+
+def write_usp(file_name, usp):
+    file = open(file_name, 'w')
+    file.write('gridX\t' + str(usp.base_x) + "\n")
+    file.write('gridY\t' + str(usp.base_y) + "\n")
+    
+    # write the stitching lint point IDs - for blender
+    for line in usp.stitching_lines:
+        file.write('sl\t')
+        for vid in line:
+            file.write(str(vid)+"\t")
+        file.write("\n")
+    
+    for ii in range(len(usp.stitching_points_line_id)):
+        pos = usp.stitching_points[ii]
+        
+        lid = usp.stitching_points_line_id[ii]
+        
+        file.write('sp \t' + str(lid) + '\t')
+            
+        for val in pos:
+            file.write(str(val)+"\t")
+        file.write("\n")        
+        
+    file.close()
+
+    
+    
+    
+def read_usp(file_name):
+    file = open(file_name, 'r')
+    Lines = file.readlines()
+    
+    all_sl = [] # the stitching line (vtx ID)
+    all_sp = [] # all stitching points (positions)
+    all_sp_lid = [] # the stitching lineID of each point
+    
+    for line in Lines:
+        elems = line.split()
+        if elems:
+            if elems[0] == "gridX":
+                base_x = int(elems[1])
+            
+            elif elems[0] =="gridY":
+                base_y = int(elems[1])
+            
+            elif elems[0] == "sl":
+                sl = []
+                for ii in range(1, len(elems)):
+                    sl.append(int(elems[ii]))
+                
+                all_sl.append(sl)
+            
+            elif elems[0] == "sp":
+                all_sp_lid.append(int(elems[1]))
+                all_sp.append([ float(elems[2]), float(elems[3]), float(elems[4]) ])
+            
+            else:    
+                pass
+    
+    usp = UnitSmockingPattern(base_x, base_y, all_sl, all_sp, all_sp_lid)
+        
+    return usp
+
+# ---------------------END: write/read unit-smocking-pattern ------------------------
+
+
+# ---------------------BEGIN: add strokes via gpencil ------------------------
+
+# Drawing with Gpencil:
+# Reference: 
+# https://gist.github.com/blender8r/4688b3f05640737236c856bc7df47bee
+# https://www.youtube.com/watch?v=csQNmnc5xQg
+
+def add_stroke_to_gpencil(pts, col, gpencil_name, line_width=12):
+    gpencil = bpy.data.grease_pencils[gpencil_name]
+        
+    gp_layer = gpencil.layers.new("lines")
+
+    gp_frame = gp_layer.frames.new(bpy.context.scene.frame_current)
+
+
+    gp_stroke = gp_frame.strokes.new()
+    gp_stroke.line_width = line_width
+    gp_stroke.start_cap_mode = 'ROUND'
+    gp_stroke.end_cap_mode = 'ROUND'
+    gp_stroke.use_cyclic = False
+    gp_stroke.points.add(len(pts))
+
+    for item, value in enumerate(pts):
+        gp_stroke.points[item].co = value
+        gp_stroke.points[item].pressure = 10
+        
+    mat = bpy.data.materials.new(name="Black")
+    bpy.data.materials.create_gpencil_data(mat)
+    gpencil.materials.append(mat)
+    mat.grease_pencil.show_fill = False
+#    mat.grease_pencil.fill_color = (1.0, 0.0, 1.0, 1.0)
+    mat.grease_pencil.color = (col[0], col[1], col[2], 1.0)
+    
+    if len(pts) > 2:
+        gp_stroke.points[0].pressure = 2
+        gp_stroke.points[-1].pressure = 2
+    
+    
+
+def create_line_stroke_from_gpencil(name="GPencil", line_width=12, coll_name=COLL_NAME_FSP):
+    gpencil_data = bpy.data.grease_pencils.new(name)
+    gpencil = bpy.data.objects.new(gpencil_data.name, gpencil_data)
+#    bpy.context.collection.objects.link(gpencil)
+#    bpy.context.scene.collection.children[coll_name].objects.link(gpencil)
+    bpy.data.collections[coll_name].objects.link(gpencil)
+    gp_layer = gpencil_data.layers.new("lines")
+
+    gp_frame = gp_layer.frames.new(bpy.context.scene.frame_current)
+
+    gp_stroke = gp_frame.strokes.new()
+    gp_stroke.line_width = line_width
+    gp_stroke.start_cap_mode = 'ROUND'
+    gp_stroke.end_cap_mode = 'ROUND'
+    gp_stroke.use_cyclic = False
+
+    return gpencil, gp_stroke
+    
+
+def draw_stitching_line(pts, col, name="stitching_line", line_width=12, coll_name=COLL_NAME_FSP): 
+    gpencil, gp_stroke = create_line_stroke_from_gpencil(name, line_width, coll_name)
+    
+    if len(pts) == 2: # we add a midpoint to make the drawing looks nicer
+        gp_stroke.points.add(len(pts)+1)
+        
+        gp_stroke.points[0].co = pts[0]
+        gp_stroke.points[0].pressure = 2
+        gp_stroke.points[1].co = (np.array(pts[0]) + np.array(pts[1]))*0.5
+        gp_stroke.points[1].pressure = 10
+
+        gp_stroke.points[2].co = pts[1]
+        gp_stroke.points[2].pressure = 2
+
+    else:
+        gp_stroke.points.add(len(pts))
+        
+        for item, value in enumerate(pts):
+            gp_stroke.points[item].co = value
+            gp_stroke.points[item].pressure = 10
+    
+
+
+        
+    mat = bpy.data.materials.new(name="Black")
+    bpy.data.materials.create_gpencil_data(mat)
+    gpencil.data.materials.append(mat)
+    mat.grease_pencil.show_fill = False
+#    mat.grease_pencil.fill_color = (1.0, 0.0, 1.0, 1.0)
+    mat.grease_pencil.color = (col[0], col[1], col[2], 1.0)
+    
+    if len(pts) > 2:
+        gp_stroke.points[0].pressure = 2
+        gp_stroke.points[-1].pressure = 2
+#       gp_stroke.points[0].vertex_color = (1.0, 0.0, 0.0, 1.0)
+#       gp_stroke.points[-1].vertex_color = (0.0, 1.0, 0.0, 1.0)
+
+
+def draw_saved_stitching_lines(context, coll_name=COLL_NAME_FSP):
+    props = bpy.context.scene.sl_props
+    print(props.savedStitchingLines)
+    for i in range(len(props.savedStitchingLines)):
+        vids = props.savedStitchingLines[i]
+        obj = bpy.data.objects[MESH_NAME_USP]
+        pts = get_vtx_pos(obj, vids)
+        draw_stitching_line(pts, props.colSaved, "stitching_line_" + str(i), STROKE_SIZE, coll_name)
+        
+        
+            
+# ---------------------END: add strokes via gpencil ------------------------
+
+            
+def construct_object_from_mesh_to_scene(V, F, mesh_name, coll_name=COLL_NAME_FSP):
+    # input: V nv-by-2(3) array, F list of array
+    
+    # convert F into a list of list
+    faces = F
+    # convert V into a list of Vector()
+    verts = [Vector((v[0], v[1], v[2] if len(v) > 2 else 0)) for v in V]
+    
+    # create mesh in blender
+    mesh = bpy.data.meshes.new(mesh_name)
+    mesh.from_pydata(verts, [], faces)
+    mesh.update(calc_edges=False) # we use our own edgeID
+    object = bpy.data.objects.new(mesh_name, mesh)
+    # link the object to the scene
+    bpy.context.scene.collection.children[coll_name].objects.link(object)
+    
+
+def show_mesh(mesh, scale=(1,1,1), location=(0,0,0)):
+    mesh.scale = scale
+    mesh.location = location
+    mesh.show_axis = False
+    mesh.show_wire = True
+    mesh.display_type = 'WIRE'
+    select_one_object(mesh)
+
+
+
+def generate_grid_for_unit_pattern(base_x, base_y, if_add_diag=False):
+    # there is some but in blender subdivison
+    # instead, manually create a grid
+    
+    gx, gy = create_grid(base_x, base_y)
+
+    F, V, _ = extract_graph_from_meshgrid(gx, gy, if_add_diag)
+
+    construct_object_from_mesh_to_scene(V, F, MESH_NAME_USP, COLL_NAME_USP)
+    
+    mesh = bpy.data.objects[MESH_NAME_USP]
+
+    usp_loc, _ = update_usp_fsp_location()
+
+    show_mesh(mesh,
+        scale=(1,1,1),
+        location=(usp_loc[0], usp_loc[1], 0))
+
+    return mesh, F, V
+    
+
+def generate_tiled_grid_for_full_pattern(len_x, len_y, if_add_diag=True):
+    # create the full grid with size len_x by len_y
+    gx, gy = create_grid(len_x, len_y)
+    
+    F, V, E = extract_graph_from_meshgrid(gx, gy, if_add_diag)
+    
+    construct_object_from_mesh_to_scene(V, F, MESH_NAME_FSP, COLL_NAME_FSP)
+    
+    mesh = bpy.data.objects[MESH_NAME_FSP]
+
+    _, fsp_loc = update_usp_fsp_location()
+    
+    show_mesh(mesh, 
+              scale=(1,1,1), 
+              location=(fsp_loc[0], fsp_loc[1], 0))
+    
+                
+    return mesh, F, V, E
+    
+        
+
+def find_matching_rowID(V, pos):
+    # V: a list of vtx positions
+    # pos: the query position
+    ind = np.where(np.all(np.array(V) == np.array(pos), axis=1))
+    return ind
+
+
+        
+
+def refresh_stitching_lines():  
+    all_sp = []
+    all_sp_lid = []
+    lid = 0
+    
+    trans = get_translation_of_mesh(MESH_NAME_FSP) 
+    
+    # check the remaining stitching lines
+    saved_sl_names = []
+    for obj in bpy.data.collections[COLL_NAME_FSP_SL].objects:
+        saved_sl_names.append(obj.name)
+#    print(saved_sl_names)
+    
+    for sl_name in saved_sl_names:
+        gp = bpy.data.grease_pencils[sl_name]
+        pts = gp.layers.active.active_frame.strokes[0].points
+
+        for p in pts:
+            # p is in the world coordinate
+            # need to translate it back to the grid-coordinate
+            all_sp.append([p.co[0]-trans[0], p.co[1]-trans[1], p.co[2]-trans[2]])
+            all_sp_lid.append(lid)
+        lid += 1
+        
+
+    all_sp_pid = all_sp_lid # now patchID is useless
+    
+    return all_sp, all_sp_lid, all_sp_pid
+
+
+
+
+    
+def initialize_collections():
+    delete_all_collections()
+    delete_all_objects()
+
+    initialize_pattern_collection(COLL_NAME_USP, COLL_NAME_USP_SL)
+    initialize_pattern_collection(COLL_NAME_FSP, COLL_NAME_FSP_SL)
+    initialize_pattern_collection(COLL_NAME_P1, COLL_NAME_P1_SL)
+    initialize_pattern_collection(COLL_NAME_P2, COLL_NAME_P2_SL)
+    initialize_pattern_collection(COLL_NAME_FSP_TMP, COLL_NAME_FSP_TMP_SL)
+    initialize_pattern_collection(COLL_NAME_SG, COLL_NAME_SG_SL)
+    
+
+def initialize_data():
+    props = bpy.types.Scene.sl_props
+    props.runtime_log = []
+    dt = bpy.types.Scene.solver_data
+    dt.unit_smocking_pattern = []
+    dt.full_smocking_pattern = []
+    dt.smocked_graph = []
+    dt.embeded_graph = []
+    dt.smocked_graph = []
+    dt.tmp_fsp1 = []
+    dt.tmp_fsp2 = []
+    dt.tmp_fsp = []
+
+def print_runtime():
+
+    runtime = bpy.types.Scene.sl_props.runtime_log
+    print('\n--------------------------- Runtime Log ---------------------------')
+    
+
+    for msg in runtime:
+        print(msg)
+    print('-------------------------------------------------------------------\n')
+            
+
+
+def initialize_pattern_collection(coll_name, stroke_coll_name):
+    if_coll_exist = False
+
+    for coll in bpy.data.collections:
+        # if coll_name in coll.name:
+        if coll_name == coll.name.split(".")[0]:
+            if_coll_exist = True
+
+    if not if_coll_exist:
+
+        my_coll = bpy.data.collections.new(coll_name)
+        bpy.context.scene.collection.children.link(my_coll)
+
+        my_coll_strokes = bpy.data.collections.new(stroke_coll_name)
+        my_coll.children.link(my_coll_strokes)
+    
+
+    for c in [coll_name, stroke_coll_name]:
+            clean_objects_in_collection(c)
+
+
+
+
+#-------------------------  update the layout to avoid overlapping
+
+
+# TODO: make the layout better
+def update_tmp_pattern_location():
+    dt = bpy.types.Scene.solver_data
+
+    fsp1 = dt.tmp_fsp1  
+    fsp2 = dt.tmp_fsp2
+    fsp3 = dt.tmp_fsp
+
+    # initialize the location
+
+    # for each pattern the origin is at (0,0), which is not necessarily at the left-bottom corner
+
+    if fsp1 != []:
+        fsp1_loc = [-fsp1.return_pattern_width() - min(fsp1.V[:,0]) - LAYOUT_X_SHIFT, -min(fsp1.V[:, 1])]
+    else:
+        fsp1_loc = [-10,2]
+
+    if fsp2 != []:
+        fsp2_loc = [-fsp2.return_pattern_width() - min(fsp2.V[:,0]) - LAYOUT_X_SHIFT, -min(fsp2.V[:, 1])]
+    else:
+        fsp2_loc = [-10,2]
+
+    if fsp3 != []:
+        fsp3_loc = [-fsp3.return_pattern_width() - min(fsp3.V[:,0]) - LAYOUT_X_SHIFT, -min(fsp3.V[:, 1])]
+    else:
+        fsp3_loc = [-10,2]
+
+    # update the location
+
+    if fsp3 != []:     
+
+        fsp2_loc[1] += fsp3_loc[1] + fsp3.return_pattern_height()  + LAYOUT_Y_SHIFT
+
+        if fsp2 != []:      
+
+            fsp1_loc[1] += fsp2_loc[1] + fsp2.return_pattern_height()  + LAYOUT_Y_SHIFT
+
+        else:
+
+            fsp1_loc[1] += fsp3_loc[1] + fsp3.return_pattern_height()  + LAYOUT_Y_SHIFT
+
+    elif fsp2 != []:
+
+        fsp1_loc[1] += fsp2_loc[1] + fsp2.return_pattern_height()  + LAYOUT_Y_SHIFT
+
+
+
+    return fsp1_loc, fsp2_loc, fsp3_loc
+
+
+
+def update_usp_fsp_location():
+    dt = bpy.types.Scene.solver_data
+    usp = dt.unit_smocking_pattern
+    fsp = dt.full_smocking_pattern
+
+    usp_loc = [0,5]
+    fsp_loc = [0,0]
+
+    if fsp != []:
+        fsp_loc[0] -= min(fsp.V[:,0])
+        fsp_loc[1] -= min(fsp.V[:,1])
+        usp_loc[1] = max(usp_loc[1], fsp.return_pattern_height() + LAYOUT_USP_FSP_SPACE)
+
+    return usp_loc, fsp_loc
+
+
+def update_smocked_graph_location():
+    print('not done yet')
 
 
 
@@ -2606,7 +2806,8 @@ class SG_draw_graph(Operator):
 
         start_time = time.time()
         SG = SmockedGraph(fsp)
-        print('runtime: extract smocked graph: %f second' % (time.time() - start_time))
+        msg = 'runtime: extract smocked graph: %f second' % (time.time() - start_time)
+        bpy.types.Scene.sl_props.runtime_log.append(msg)
 
         dt.smocked_graph = SG # save the data to the scene
 
@@ -3131,7 +3332,7 @@ def register():
     for cls in _classes:
         bpy.utils.register_class(cls)
         
-    bpy.types.Scene.sl_props = StitchingLinesProp()
+    bpy.types.Scene.sl_props = GlobalVariable()
     bpy.types.Scene.solver_data = SolverData()
     
 
@@ -3139,7 +3340,7 @@ def unregister():
     for cls in _classes:
         bpy.utils.unregister_class(cls)
         
-    del bpy.types.Scene.sf_props    
+    del bpy.types.Scene.sl_props    
     del bpy.tpyes.Scene.solver_data
 
 if __name__ == "__main__":
