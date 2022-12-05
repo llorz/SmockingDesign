@@ -264,11 +264,11 @@ class debug_func(Operator):
         initialize_data()
 
     
-        context.scene.path_import = '/Users/jing/research/SmockingDesign/unit_smocking_patterns/leaf.usp'
+        context.scene.path_import = '/Users/jing/research/SmockingDesign/unit_smocking_patterns/braid.usp'
         bpy.ops.object.import_unit_pattern()
 
-        bpy.context.scene.num_x = 2
-        bpy.context.scene.num_y = 4
+        bpy.context.scene.num_x = 3
+        bpy.context.scene.num_y = 3
                 
         bpy.ops.object.create_full_smocking_pattern()
 
@@ -316,6 +316,7 @@ class debug_func(Operator):
         eps_neq = 0
 
 
+        #----------------- optimize for the underlay graph
         X_underlay = sg.V[sg.vid_underlay, 0:2]
 
         # use one equal constraint to rescale the initial embedding
@@ -356,10 +357,7 @@ class debug_func(Operator):
 
         X = np.concatenate((X, np.zeros((len(X),1))), axis=1)
 
-
-        # print(X_underlay)
-        # print(X)
-        
+        X_underlay = X
 
         print(y_ini, y_res)
         
@@ -367,6 +365,76 @@ class debug_func(Operator):
         
         print(fval_max, fval_eq, fval_neq)
 
+
+        #
+        # print(X_underlay)
+        # print(X)
+        
+        #----------------- optimize for the pleat graph
+        # constraints for the pleat graph
+        C_pleat_neq = []
+        for eid in sg.eid_pleat:
+            d = sg.return_max_dist_constraint_for_edge(eid)
+            C_pleat_neq.append([sg.E[eid, 0], sg.E[eid, 1], d])
+
+        C_pleat_neq = np.array(C_pleat_neq)
+
+        X_pleat = sg.V[sg.vid_pleat, 0:2]
+
+        # option 01: initialize from the original position 
+        X_pleat = np.concatenate((X_pleat, np.ones((len(X_pleat),1))), axis=1)
+
+        '''
+        # option 02: update the positions w.r.t. the underlay graph
+        vid = 1 # vid in X_pleat
+        vid_sg = vid + sg.nv_underlay # the vid in the smocked graph
+        # find its neighboring underaly nodes
+        neigh_eid = sg.find_vtx_neighboring_edges(vid_sg)
+        trans = np.zeros((1,3))
+        count = 0
+        for eid in neigh_eid:
+            vtx = sg.E[eid, :]
+            vid = setdiff1d(vtx, vid_sg) # find the other endpoint
+            if sg.is_vtx_underlay(vid):
+
+        '''
+
+
+        
+        x0 = X_pleat.flatten()*scale
+
+        w_pleat_neq = 1e6
+        w_var = 1e1
+
+        start_time = time.time()
+        res_pleat = minimize(opti_energy_sg_pleat, 
+                       x0, 
+                       method='Nelder-Mead',
+                       args=(X_underlay, C_pleat_neq, w_pleat_neq, w_var, eps_neq), 
+                       options=opti_get_NelderMead_solver_options())
+        x0 = res_pleat.x
+        
+        msg = 'optimization: embed the pleat graph: %f second' % (time.time() - start_time)
+        bpy.types.Scene.sl_props.runtime_log.append(msg)
+
+
+        print_runtime()
+        
+        y1, y2, y3 = opti_energy_sg_pleat(res_pleat.x, X_underlay, C_pleat_neq, w_pleat_neq, w_var, eps_neq, True)
+
+        X_pleat = res_pleat.x.reshape(int(len(res_pleat.x)/3), 3)
+
+        print(y1, y2, y3)
+        
+
+        X_all = np.concatenate((X_underlay, X_pleat), axis=0)
+
+        # print(X_all)
+
+        #----------------- plot the embeded graph
+        
+        
+        
         # X = X_underlay
         trans = [0,-20, 0]
         for eid in sg.eid_underlay:
@@ -383,8 +451,56 @@ class debug_func(Operator):
                               coll_name=COLL_NAME_SG)
 
         
+        # X = X_underlay
+        trans = [0,-30, 0]
+        for eid in range(sg.ne):
+            vtxID = sg.E[eid, :]
+            pos = X_all[vtxID, :] + trans
+            if sg.is_edge_underlay(eid):
+                col = col_gray
+            else:
+                col = col_red
+            draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+
 
         return {'FINISHED'}
+
+
+def opti_energy_sg_pleat(x_pleat_in,
+                         X_underlay,
+                         C_pleat_neq, 
+                         w_pleat_neq=1e6, 
+                         w_var = 1e1,
+                         eps_neq=-1e-3,
+                         if_return_all_terms=False):
+
+    if len(X_underlay[0]) == 2:    
+        X_underlay = np.concatenate((X_underlay, np.zeros((len(X_underlay),1))), axis=1)
+
+    X_pleat = x_pleat_in.reshape(int(len(x_pleat_in)/3), 3)
+
+    X = np.concatenate((X_underlay, X_pleat), axis = 0)
+    
+    D1 = squareform(pdist(X,'euclidean'))  
+    
+    # maximize the embedding: such that the vertices are far from eath other
+    fval_max = -np.sum(np.sum(D1))
+
+    # make usre the inequality is satisfied
+    d_neq = get_mat_entry(D1, C_pleat_neq[:,0], C_pleat_neq[:, 1])
+    fval_neq = sum(d_neq - C_pleat_neq[:,2] > eps_neq)
+
+    # penalize the variance of the height
+    fval_var = np.var(X_pleat[:,2])
+
+    fval = fval_max + w_pleat_neq*fval_neq + w_var*fval_var
+
+    # print(fval)
+    if if_return_all_terms: # for debug
+        return fval_max, fval_neq, fval_var
+    else:
+        return fval
+
 
 
 # TODO: need to update according the user input
@@ -553,6 +669,12 @@ class SmockedGraph():
                 D[j,i] = dist
         return D
 
+
+    def find_vtx_neighboring_edges(self, vid):
+        eids = find_index_in_list(self.E[:, 0].tolist(), vid)
+        eids.append(find_index_in_list(self.E[:, 1].tolist(), vid))
+        
+        return np.unique(eids)
 
 
     def is_vtx_pleat(self, vid):
