@@ -488,7 +488,9 @@ def opti_energy_sg_pleat(x_pleat_in,
 
     # make usre the inequality is satisfied
     d_neq = get_mat_entry(D1, C_pleat_neq[:,0], C_pleat_neq[:, 1])
-    fval_neq = sum(d_neq - C_pleat_neq[:,2] > eps_neq)
+    # fval_neq = sum(d_neq - C_pleat_neq[:,2] > eps_neq)
+    fval_neq = sum(np.power(d_neq - C_pleat_neq[:,2], 2))
+
 
     # penalize the variance of the height
     fval_var = np.var(X_pleat[:,2])
