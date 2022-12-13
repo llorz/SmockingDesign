@@ -25,11 +25,14 @@ classdef SmockingPattern
         grid_F
         V         % the same as grid_V
         E         % the combination of grid_E and grid_Ediag
+        nv
         sewingLines  % a list of vertices that will be stitched together (the xy-coord of these vertices)
         sewingLines_plotID
         sewingPtsID   % the list of of vtxID as in grid_V, that will be stitched together
         edge_cid  % edge category id
         all_sewingPts
+        vid_border
+        usp
     end
 
     methods
@@ -84,7 +87,7 @@ classdef SmockingPattern
             S = S.convert_grid_to_graph(ifAddFaceCenter, ifAddDelaunayEdge);
             S = S.get_sewing_points_ID();
 
-
+            S.usp = usp;
         end
 
         function obj = convert_grid_to_graph(obj, ifAddFaceCenter, ifAddDelaunayEdge)
@@ -128,6 +131,13 @@ classdef SmockingPattern
                 obj.E =[obj.E; underlay_edge_from_delaunay(obj)];
             end
             obj.E = sort_edge(obj.E);
+            obj.nv = size(obj.V,1);
+
+            obj.vid_border = unique([find(obj.V(:,1) == min(obj.V(:, 1)));
+                find(obj.V(:,1) == max(obj.V(:, 1)));
+                find(obj.V(:,2) == min(obj.V(:, 2)));
+                find(obj.V(:,2) == max(obj.V(:, 2)))]);
+
         end
 
         function E_new = underlay_edge_from_delaunay(obj) % if the grid is to fine, no underlay edge can be detected from the grid edges
@@ -220,7 +230,7 @@ classdef SmockingPattern
 
             axis equal;
             view([0,90])
-%             set(gca,'XAxisLocation','top','YAxisLocation','left','ydir','reverse');
+            %             set(gca,'XAxisLocation','top','YAxisLocation','left','ydir','reverse');
             set(gca, 'YTIck', 0:2:obj.len_y)
             set(gca, 'XTick', 2:2:obj.len_x)
         end

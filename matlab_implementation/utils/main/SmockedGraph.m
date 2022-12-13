@@ -11,6 +11,8 @@ classdef SmockedGraph
         vid_underlay % vtxID belong the underlay graph
         eid_underlay %edgeID belong to the underlay graph
         vid_pleat       % vtxID of the pleat vertices (i.e., not touching the surface)
+        vid_border
+        vid_pleat_border
         eid_pleat       % edgeID that forms the pleats
     end
     
@@ -57,7 +59,8 @@ classdef SmockedGraph
             SG.eid_underlay = reshape( find(sum(E_new <= length(SP.sewingPtsID), 2) == 2), 1, []);
             SG.eid_pleat = setdiff(1:SG.ne, SG.eid_underlay);
             SG.SP = SP;
-            
+            SG.vid_border = unique(SG.V_sp2sg(SP.vid_border,2));
+            SG.vid_pleat_border = intersect(SG.vid_border, SG.vid_pleat);
             SG.vid_from_sp = arrayfun(@(vid) find(SG.V_sp2sg(:,2) == vid), 1:SG.nv, 'uni', 0);
             % update the endpoints index of the edges in SP w.r.t. the
             % vertex ID in SG
