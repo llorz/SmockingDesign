@@ -183,8 +183,8 @@ switch lower(type)
     case 't7'
         base_x = 4;
         base_y = 4;
-        sewingLines = {[0,3;1,4;2,3;1,2],...
-            [2,1;3,2;4,1;3,0]};
+        sewingLines = {[0,3;1,4;2,3;1,2;0,3],...
+            [2,1;3,2;4,1;3,0;2,1]};
 
     case 't8'
         base_x = 3;

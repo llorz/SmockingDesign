@@ -46,7 +46,10 @@ x = fminunc(myfun_underlay,...
     X_underlay_ini(:),...
     options);
 
+
+
 X_underlay = reshape(x, [], 2);
+energy_preserve_edge_length(X_underlay, C_underlay_eq)
 
 %--------------------------------------------
 %-    embed the pleat
@@ -75,7 +78,10 @@ end
 
 x = fminunc(myfun_pleat, X_pleat_ini(:), options);
 
+
 X_pleat = reshape(x, [], 3);
+
+energy_preserve_edge_length([[X_underlay, zeros(size(X_underlay,1), 1)]; X_pleat], C_pleat_eq)
 
 X_res = [ [X_underlay, zeros(size(X_underlay,1), 1)]; ...
     X_pleat];
