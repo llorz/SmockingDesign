@@ -83,7 +83,10 @@ X_pleat = reshape(x, [], 3);
 
 energy_preserve_edge_length([[X_underlay, zeros(size(X_underlay,1), 1)]; X_pleat], C_pleat_eq)
 
-X_res = [ [X_underlay, zeros(size(X_underlay,1), 1)]; ...
+X_underlay_ini = [X_underlay_ini, zeros(size(X_underlay,1), 1)];
+
+X_underlay = [X_underlay, zeros(size(X_underlay,1), 1)];
+X_res = [ X_underlay; ...
     X_pleat];
 end
 
