@@ -1,8 +1,8 @@
 clc; clear;
 addpath(genpath('../utils/'))
 
-usp = get_unit_smocking_pattern('leaf');
-SP = SmockingPattern(usp, 2, 4, 'regular',false, [0,0], false);
+usp = get_unit_smocking_pattern('braid');
+SP = SmockingPattern(usp, 3, 3, 'regular',false, [0,0], false);
 SG  = SmockedGraph(SP);
 
 figure(1); clf;
@@ -25,7 +25,7 @@ para.w_p_height = 0;
 para.opti_display = 'off';
 
 tic
-[X_res, C_underlay_eq, C_pleat_eq, X_underlay_ini, X_pleat_ini, X_underlay, X_pleat] = embed_smocked_graph_export(SG, para);
+[X, C_underlay_eq, C_pleat_eq, X_underlay_ini, X_pleat_ini, X_underlay, X_pleat] = embed_smocked_graph_export(SG, para);
 toc
 
 figure(6); clf;
