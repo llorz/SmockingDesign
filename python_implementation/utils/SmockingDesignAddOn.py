@@ -281,7 +281,8 @@ class debug_func(Operator):
 
         fsp = dt.full_smocking_pattern
         sg = dt.smocked_graph
-
+    
+        '''
 
         # find the pairwise distance constraints for the underlay graph
         
@@ -395,7 +396,7 @@ class debug_func(Operator):
         for eid in neigh_eid:
             vtx = sg.E[eid, :]
             vid = setdiff1d(vtx, vid_sg) # find the other endpoint
-            if sg.is_vtx_underlay(vid):
+#            if sg.is_vtx_underlay(vid):
 
         '''
 
@@ -461,7 +462,7 @@ class debug_func(Operator):
             else:
                 col = col_red
             draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
-
+        '''
 
         return {'FINISHED'}
 
