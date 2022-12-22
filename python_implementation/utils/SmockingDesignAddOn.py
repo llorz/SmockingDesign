@@ -195,6 +195,8 @@ class SolverData():
     tmp_fsp2 = []
     tmp_fsp = []
 
+
+
 class OptiData():
     C_underlay_eq = []
     C_underlay_neq = []
@@ -222,6 +224,8 @@ class debug_clear(Operator):
 
         return {'FINISHED'}
 
+
+
 class debug_print(Operator):
     bl_idname = "object.debug_print"
     bl_label = "print data in scene"
@@ -246,7 +250,50 @@ class debug_print(Operator):
                 
         return {'FINISHED'}
 
+def opti_energy_maximize_embedding(X):
+    D = squareform(pdist(X,'euclidean'))  
+    fval = -np.sum(np.sum(D))
+    return fval
 
+
+def opti_energy_pleat_height_varicance(X_pleat):
+    fval = np.var(X_pleat[:,2])
+    return fval
+
+
+def opti_energy_preserve_edge_length(X, C_eq):
+    I = C_eq[:,0].astype(int)
+    J = C_eq[:,1].astype(int)
+    d_eq = np.sqrt(np.sum(np.power(X[I, :] - X[J, :], 2),axis = 1))
+    fval = sum(np.power(d_eq - C_eq[:,2], 2))
+    return fval
+
+
+
+def opti_energy_sg_underlay(x_in, C_eq):
+    # energy to embedding the underaly graph of the smocked graph
+    X = x_in.reshape(int(len(x_in)/2), 2) # x_in the flattened xy-coordinates of the underaly graph
+    return opti_energy_preserve_edge_length(X, C_eq)
+
+
+def opti_energy_sg_pleat(x_pleat_in, 
+                         X_underlay, 
+                         C_pleat_eq,
+                         w_embed=1,
+                         w_eq=1e4,
+                         w_var = 1):
+    if len(X_underlay[0]) == 2:    
+        X_underlay = np.concatenate((X_underlay, np.zeros((len(X_underlay),1))), axis=1)
+
+    X_pleat = x_pleat_in.reshape(int(len(x_pleat_in)/3), 3)
+
+    X = np.concatenate((X_underlay, X_pleat), axis = 0)
+
+    fval = w_embed*opti_energy_maximize_embedding(X) +\
+           w_eq*opti_energy_preserve_edge_length(X, C_pleat_eq) +\
+           w_var*opti_energy_pleat_height_varicance(X_pleat)
+
+    return fval
 
 
 class debug_func(Operator):
@@ -264,7 +311,7 @@ class debug_func(Operator):
         initialize_data()
 
     
-        context.scene.path_import = '/Users/jing/research/SmockingDesign/unit_smocking_patterns/braid.usp'
+        context.scene.path_import = '/Users/jing/research/SmockingDesign/unit_smocking_patterns/leaf.usp'
         bpy.ops.object.import_unit_pattern()
 
         bpy.context.scene.num_x = 3
@@ -282,166 +329,92 @@ class debug_func(Operator):
         fsp = dt.full_smocking_pattern
         sg = dt.smocked_graph
     
-        '''
-
-        # find the pairwise distance constraints for the underlay graph
-        
-        D = sg.return_pairwise_distance_constraint_for_underlay()
-
-        constrained_vtx_pair = SG_find_valid_underlay_constraints_exact(sg, D)
-        
-        # embed the underlay graph
-
-        # find the vtx_pair where the max_dist is reached
-        E_eq = sg.E[sg.eid_underlay, :]
-
-        # find the vtx_pair where the max_dist forms inequality constraints
-        idx, _ = setdiffnd(constrained_vtx_pair, E_eq)
-        E_neq = constrained_vtx_pair[idx, :]
-
-        # formulate the constraints 
-        C_eq = []
-        for i, j in zip(E_eq[:, 0], E_eq[:, 1]):
-            C_eq.append([i, j, D[i,j]])
-
-        C_eq = np.array(C_eq)
-
-        C_neq = []
-        for i, j in zip(E_neq[:, 0], E_neq[:, 1]):
-            C_neq.append([i, j, D[i,j]])
-        C_neq = np.array(C_neq)
-        
-
-        w_eq = 1e6
-        w_neq = 1e2
-        eps_neq = 0
+        C_underlay_eq, C_pleat_eq = sg.return_distance_constraint()
 
 
-        #----------------- optimize for the underlay graph
-        X_underlay = sg.V[sg.vid_underlay, 0:2]
+        #----------------- embed the underlay 
+        X_underlay_ini = sg.V[sg.vid_underlay, 0:2]    
 
-        # use one equal constraint to rescale the initial embedding
-        # maybe converge faster
-        id_eq = 1
-        v1 = X_underlay[int(C_eq[id_eq, 0]), :]
-        v2 = X_underlay[int(C_eq[id_eq, 1]), :]
-        d12 = np.linalg.norm(v1 - v2)
-        e12 = C_eq[id_eq, 2]
-        scale = e12/d12
+    
+        x0 = X_underlay_ini.flatten()
 
-        x0 = X_underlay.flatten()*scale
-
-
-        bounds = Bounds( -2*np.ones((len(x0),1)), 10*np.ones((len(x0),1)) )
-        
-        y_ini = opti_energy_sg_underlay(x0, C_eq, C_neq, w_eq, w_neq, eps_neq)
         start_time = time.time()
-        #--------------------- Test 01
-        for w_eq in [1e8, 1e6, 1e4, 1e2]:
-            res = minimize(opti_energy_sg_underlay, 
+
+        res_underlay = minimize(opti_energy_sg_underlay, 
                            x0, 
                            method='Nelder-Mead',
-                           args=(C_eq, C_neq, w_eq, w_neq, eps_neq), 
+                           args=(C_underlay_eq), 
                            options=opti_get_NelderMead_solver_options())
-            x0 = res.x
-            
+
         msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
         bpy.types.Scene.sl_props.runtime_log.append(msg)
 
 
-        print_runtime()
-        
-        y_res = opti_energy_sg_underlay(res.x, C_eq, C_neq, w_eq, w_neq, eps_neq)
+
+        X = res_underlay.x.reshape(int(len(res_underlay.x)/2),2)
+
+        X_underlay = np.concatenate((X, np.zeros((len(X),1))), axis=1)
 
 
-        X = res.x.reshape(int(len(res.x)/2),2)
 
-        X = np.concatenate((X, np.zeros((len(X),1))), axis=1)
-
-        X_underlay = X
-
-        print(y_ini, y_res)
-        
-        fval_max, fval_eq, fval_neq = opti_energy_sg_underlay(res.x, C_eq, C_neq, w_eq, w_neq, eps_neq, True)
-        
-        print(fval_max, fval_eq, fval_neq)
-
-
-        #
-        # print(X_underlay)
-        # print(X)
-        
-        #----------------- optimize for the pleat graph
-        # constraints for the pleat graph
-        C_pleat_neq = []
-        for eid in sg.eid_pleat:
-            d = sg.return_max_dist_constraint_for_edge(eid)
-            C_pleat_neq.append([sg.E[eid, 0], sg.E[eid, 1], d])
-
-        C_pleat_neq = np.array(C_pleat_neq)
-
+        #------------------ embed the pleat
         X_pleat = sg.V[sg.vid_pleat, 0:2]
 
         # option 01: initialize from the original position 
         X_pleat = np.concatenate((X_pleat, np.ones((len(X_pleat),1))), axis=1)
-
-        '''
-        # option 02: update the positions w.r.t. the underlay graph
-        vid = 1 # vid in X_pleat
-        vid_sg = vid + sg.nv_underlay # the vid in the smocked graph
-        # find its neighboring underaly nodes
-        neigh_eid = sg.find_vtx_neighboring_edges(vid_sg)
-        trans = np.zeros((1,3))
-        count = 0
-        for eid in neigh_eid:
-            vtx = sg.E[eid, :]
-            vid = setdiff1d(vtx, vid_sg) # find the other endpoint
-#            if sg.is_vtx_underlay(vid):
-
-        '''
-
-
         
-        x0 = X_pleat.flatten()*scale
+        x0 = X_pleat.flatten()
+        w_pleat_embed = 1
+        w_pleat_eq = 1e3
+        w_pleat_var = 1
 
-        w_pleat_neq = 1e6
-        w_var = 1e1
 
         start_time = time.time()
+
         res_pleat = minimize(opti_energy_sg_pleat, 
-                       x0, 
-                       method='Nelder-Mead',
-                       args=(X_underlay, C_pleat_neq, w_pleat_neq, w_var, eps_neq), 
-                       options=opti_get_NelderMead_solver_options())
-        x0 = res_pleat.x
-        
-        msg = 'optimization: embed the pleat graph: %f second' % (time.time() - start_time)
+                           x0, 
+                           method='Nelder-Mead',
+                           args=(X_underlay, C_pleat_eq, w_pleat_embed, w_pleat_eq, w_pleat_var), 
+                           options=opti_get_NelderMead_solver_options())
+
+        msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
         bpy.types.Scene.sl_props.runtime_log.append(msg)
-
-
-        print_runtime()
-        
-        y1, y2, y3 = opti_energy_sg_pleat(res_pleat.x, X_underlay, C_pleat_neq, w_pleat_neq, w_var, eps_neq, True)
 
         X_pleat = res_pleat.x.reshape(int(len(res_pleat.x)/3), 3)
 
-        print(y1, y2, y3)
-        
+
 
         X_all = np.concatenate((X_underlay, X_pleat), axis=0)
 
-        # print(X_all)
 
+        print_runtime()
+
+
+        trans = [0,-30, 0]
+        for eid in range(sg.ne):
+            vtxID = sg.E[eid, :]
+            pos = X_all[vtxID, :] + trans
+            if sg.is_edge_underlay(eid):
+                col = col_gray
+            else:
+                col = col_red
+            draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+        
+
+
+        # X = X_underlay
+        # trans = [0,-20, 0]
+        # for eid in sg.eid_underlay:
+        #     vtxID = sg.E[eid, :]
+        #     pos = X[vtxID, :] + trans
+        #     draw_stitching_line(pos, col_red, "embed_underlay2_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+
+
+        '''
         #----------------- plot the embeded graph
         
         
         
-        # X = X_underlay
-        trans = [0,-20, 0]
-        for eid in sg.eid_underlay:
-            vtxID = sg.E[eid, :]
-            pos = X[vtxID, :] + trans
-            draw_stitching_line(pos, col_red, "embed_underlay2_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
 
         for vid in range(len(X)):
             pos = X[vid, :] + trans
@@ -462,12 +435,12 @@ class debug_func(Operator):
             else:
                 col = col_red
             draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+        
         '''
-
         return {'FINISHED'}
 
 
-def opti_energy_sg_pleat(x_pleat_in,
+def opti_energy_sg_pleat_old(x_pleat_in,
                          X_underlay,
                          C_pleat_neq, 
                          w_pleat_neq=1e6, 
@@ -530,7 +503,7 @@ def opti_get_NelderMead_solver_options():
 
     return nm_options
 
-def opti_energy_sg_underlay(x_in,
+def opti_energy_sg_underlay_old(x_in,
                             C_eq, 
                             C_neq, 
                             w_eq=1e2,
@@ -661,7 +634,24 @@ class SmockedGraph():
         return self.return_max_dist_constraint_for_vtx_pair(self.E[eid, 0], self.E[eid, 1])
 
 
-    
+
+
+    def return_distance_constraint(self):
+        # prepare the equality constraints for the underlay    
+        C_underlay_eq = []
+        for eid in self.eid_underlay:
+            d = self.return_max_dist_constraint_for_edge(eid)
+            C_underlay_eq.append([self.E[eid, 0], self.E[eid, 1], d])
+
+        # prepare the equality constraints for the pleat
+        C_pleat_eq = []
+        for eid in self.eid_pleat:
+            d = self.return_max_dist_constraint_for_edge(eid)
+            C_pleat_eq.append([self.E[eid, 0], self.E[eid, 1], d])
+        return np.array(C_underlay_eq), np.array(C_pleat_eq)
+
+
+
     def return_pairwise_distance_constraint_for_underlay(self):
         num = self.nv_underlay
         D = np.zeros((num, num))
@@ -914,6 +904,8 @@ class SmockingPattern():
             
             all_sp_vid.append(vid[0][0].tolist())
         self.stitching_points_vtx_id = np.array(all_sp_vid)
+
+
     
     def update_mesh(self, V_new, F_new, E_new):
         self.V = V_new
@@ -3736,3 +3728,157 @@ if __name__ == "__main__":
         # print(eid_underlay)
         # print(eid_pleat)
         # # print(E_sg[eid_underlay,:])
+
+
+#--------------------------------------------------------
+# old formulation with equality and inequality constraints
+
+#         #------------------
+
+#         # find the pairwise distance constraints for the underlay graph
+        
+#         D = sg.return_pairwise_distance_constraint_for_underlay()
+
+#         constrained_vtx_pair = SG_find_valid_underlay_constraints_exact(sg, D)
+        
+#         # embed the underlay graph
+
+#         # find the vtx_pair where the max_dist is reached
+#         E_eq = sg.E[sg.eid_underlay, :]
+
+#         # find the vtx_pair where the max_dist forms inequality constraints
+#         idx, _ = setdiffnd(constrained_vtx_pair, E_eq)
+#         E_neq = constrained_vtx_pair[idx, :]
+
+#         # formulate the constraints 
+#         C_eq = []
+#         for i, j in zip(E_eq[:, 0], E_eq[:, 1]):
+#             C_eq.append([i, j, D[i,j]])
+
+#         C_eq = np.array(C_eq)
+
+#         C_neq = []
+#         for i, j in zip(E_neq[:, 0], E_neq[:, 1]):
+#             C_neq.append([i, j, D[i,j]])
+#         C_neq = np.array(C_neq)
+        
+
+#         w_eq = 1e6
+#         w_neq = 1e2
+#         eps_neq = 0
+
+
+#         #----------------- optimize for the underlay graph
+#         X_underlay = sg.V[sg.vid_underlay, 0:2]
+
+#         # use one equal constraint to rescale the initial embedding
+#         # maybe converge faster
+#         id_eq = 1
+#         v1 = X_underlay[int(C_eq[id_eq, 0]), :]
+#         v2 = X_underlay[int(C_eq[id_eq, 1]), :]
+#         d12 = np.linalg.norm(v1 - v2)
+#         e12 = C_eq[id_eq, 2]
+#         scale = e12/d12
+
+#         x0 = X_underlay.flatten()*scale
+
+
+#         bounds = Bounds( -2*np.ones((len(x0),1)), 10*np.ones((len(x0),1)) )
+        
+#         y_ini = opti_energy_sg_underlay(x0, C_eq, C_neq, w_eq, w_neq, eps_neq)
+#         start_time = time.time()
+#         #--------------------- Test 01
+#         for w_eq in [1e8, 1e6, 1e4, 1e2]:
+#             res = minimize(opti_energy_sg_underlay, 
+#                            x0, 
+#                            method='Nelder-Mead',
+#                            args=(C_eq, C_neq, w_eq, w_neq, eps_neq), 
+#                            options=opti_get_NelderMead_solver_options())
+#             x0 = res.x
+            
+#         msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
+#         bpy.types.Scene.sl_props.runtime_log.append(msg)
+
+
+#         print_runtime()
+        
+#         y_res = opti_energy_sg_underlay(res.x, C_eq, C_neq, w_eq, w_neq, eps_neq)
+
+
+#         X = res.x.reshape(int(len(res.x)/2),2)
+
+#         X = np.concatenate((X, np.zeros((len(X),1))), axis=1)
+
+#         X_underlay = X
+
+#         print(y_ini, y_res)
+        
+#         fval_max, fval_eq, fval_neq = opti_energy_sg_underlay(res.x, C_eq, C_neq, w_eq, w_neq, eps_neq, True)
+        
+#         print(fval_max, fval_eq, fval_neq)
+
+
+#         #
+#         # print(X_underlay)
+#         # print(X)
+        
+#         #----------------- optimize for the pleat graph
+#         # constraints for the pleat graph
+#         C_pleat_neq = []
+#         for eid in sg.eid_pleat:
+#             d = sg.return_max_dist_constraint_for_edge(eid)
+#             C_pleat_neq.append([sg.E[eid, 0], sg.E[eid, 1], d])
+
+#         C_pleat_neq = np.array(C_pleat_neq)
+
+#         X_pleat = sg.V[sg.vid_pleat, 0:2]
+
+#         # option 01: initialize from the original position 
+#         X_pleat = np.concatenate((X_pleat, np.ones((len(X_pleat),1))), axis=1)
+
+#         '''
+#         # option 02: update the positions w.r.t. the underlay graph
+#         vid = 1 # vid in X_pleat
+#         vid_sg = vid + sg.nv_underlay # the vid in the smocked graph
+#         # find its neighboring underaly nodes
+#         neigh_eid = sg.find_vtx_neighboring_edges(vid_sg)
+#         trans = np.zeros((1,3))
+#         count = 0
+#         for eid in neigh_eid:
+#             vtx = sg.E[eid, :]
+#             vid = setdiff1d(vtx, vid_sg) # find the other endpoint
+# #            if sg.is_vtx_underlay(vid):
+
+#         '''
+
+
+        
+#         x0 = X_pleat.flatten()*scale
+
+#         w_pleat_neq = 1e6
+#         w_var = 1e1
+
+#         start_time = time.time()
+#         res_pleat = minimize(opti_energy_sg_pleat, 
+#                        x0, 
+#                        method='Nelder-Mead',
+#                        args=(X_underlay, C_pleat_neq, w_pleat_neq, w_var, eps_neq), 
+#                        options=opti_get_NelderMead_solver_options())
+#         x0 = res_pleat.x
+        
+#         msg = 'optimization: embed the pleat graph: %f second' % (time.time() - start_time)
+#         bpy.types.Scene.sl_props.runtime_log.append(msg)
+
+
+#         print_runtime()
+        
+#         y1, y2, y3 = opti_energy_sg_pleat(res_pleat.x, X_underlay, C_pleat_neq, w_pleat_neq, w_var, eps_neq, True)
+
+#         X_pleat = res_pleat.x.reshape(int(len(res_pleat.x)/3), 3)
+
+#         print(y1, y2, y3)
+        
+
+#         X_all = np.concatenate((X_underlay, X_pleat), axis=0)
+
+#         # print(X_all)
