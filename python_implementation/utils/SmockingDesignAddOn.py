@@ -16,6 +16,12 @@ import bpy
 import bmesh
 from bpy.types import Operator
 from bpy.types import (Panel, Operator)
+import sys
+import os
+
+# TODO: Find a better way to load the module...
+sys.path.append(os.path.dirname(bpy.context.space_data.text.filepath))
+import cpp_smocking_solver
 
 
 import math
@@ -337,21 +343,23 @@ class debug_func(Operator):
 
     
         x0 = X_underlay_ini.flatten()
-
+        
+        #print(X_underlay_ini);
+        
+        
         start_time = time.time()
-
+        res_underlay = np.array(cpp_smocking_solver.embed_underlay(X_underlay_ini, C_underlay_eq))
+        '''
         res_underlay = minimize(opti_energy_sg_underlay, 
                            x0, 
                            method='Nelder-Mead',
                            args=(C_underlay_eq), 
                            options=opti_get_NelderMead_solver_options())
-
+        '''
         msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
         bpy.types.Scene.sl_props.runtime_log.append(msg)
 
-
-
-        X = res_underlay.x.reshape(int(len(res_underlay.x)/2),2)
+        X = res_underlay.reshape(int(len(res_underlay)),2)
 
         X_underlay = np.concatenate((X, np.zeros((len(X),1))), axis=1)
 
@@ -367,20 +375,20 @@ class debug_func(Operator):
         w_pleat_embed = 1
         w_pleat_eq = 1e3
         w_pleat_var = 1
-
-
         start_time = time.time()
-
+        print("CCCClen: ", C_pleat_eq)
+        res_pleat = np.array(cpp_smocking_solver.embed_pleats(X_underlay, X_pleat, C_pleat_eq))
+        '''
         res_pleat = minimize(opti_energy_sg_pleat, 
                            x0, 
                            method='Nelder-Mead',
                            args=(X_underlay, C_pleat_eq, w_pleat_embed, w_pleat_eq, w_pleat_var), 
                            options=opti_get_NelderMead_solver_options())
-
+        '''
         msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
         bpy.types.Scene.sl_props.runtime_log.append(msg)
 
-        X_pleat = res_pleat.x.reshape(int(len(res_pleat.x)/3), 3)
+        X_pleat = res_pleat.reshape(int(len(res_pleat)), 3)
 
 
 
