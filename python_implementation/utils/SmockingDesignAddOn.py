@@ -376,7 +376,6 @@ class debug_func(Operator):
         w_pleat_eq = 1e3
         w_pleat_var = 1
         start_time = time.time()
-        print("CCCClen: ", C_pleat_eq)
         res_pleat = np.array(cpp_smocking_solver.embed_pleats(X_underlay, X_pleat, C_pleat_eq))
         '''
         res_pleat = minimize(opti_energy_sg_pleat, 
