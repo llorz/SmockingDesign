@@ -22,7 +22,7 @@ import os
 # TODO: Find a better way to load the module...
 sys.path.append(os.path.dirname(bpy.context.space_data.text.filepath))
 import cpp_smocking_solver
-
+import arap
 
 import math
 from mathutils import Vector
@@ -35,7 +35,6 @@ from scipy.optimize import NonlinearConstraint
 from scipy.optimize import Bounds
 
 import itertools
-
 
 import os
 from datetime import datetime
@@ -393,8 +392,28 @@ class debug_func(Operator):
 
         X_all = np.concatenate((X_underlay, X_pleat), axis=0)
 
-
         print_runtime()
+
+        # Run arap.
+        [V, F] = arap_simulate_smocked_design(X_all, fsp.V, sg.dict_sp2sg)
+
+        # Show the result.
+        smocked_mesh = bpy.data.meshes.new("Smocked")
+        smocked_mesh.from_pydata(V,[],F)
+        smocked_mesh.update()
+        obj = bpy.data.objects.new('Smocked mesh', smocked_mesh)
+        obj.location = (0, -30, 0)
+        for f in obj.data.polygons:
+          f.use_smooth = True
+        smocked_collection = bpy.data.collections.new('smocked_collection')
+        bpy.context.scene.collection.children.link(smocked_collection)
+        smocked_collection.objects.link(obj)
+
+        add_text_to_scene(body="Simulated Smocked Mesh", 
+                          location=(0, -32, 0), 
+                          scale=(1,1,1),
+                          obj_name='grid_annotation',
+                          coll_name=COLL_NAME_USP)
 
 
         trans = [0,-30, 0]
@@ -1023,7 +1042,31 @@ class SmockingPattern():
 #                      Core functions for smocking pattern
 # ========================================================================
 
-    
+def arap_simulate_smocked_design(x, orig_x, orig_to_new):
+  bbox_min, bbox_max = (np.amin(x, axis=0), np.amax(x, axis=0))
+  margin_x, margin_y = (0.5, 0.5)
+  grid_size = [100, 100]
+  # Create grid.
+  [gx, gy]= np.meshgrid( \
+    np.linspace(bbox_min[0] - margin_x, bbox_max[0] + margin_x, grid_size[0]),
+    np.linspace(bbox_min[1] - margin_y, bbox_max[1] + margin_y, grid_size[1]))
+  
+  # Create graph from grid.
+  F, V, _ = extract_graph_from_meshgrid(gx, gy, True)
+  # Quad -> triangle mesh.
+  F = np.array(list(itertools.chain.from_iterable(\
+      [(f[[0,1,2]], f[[2,3,0]]) for f in F])))
+
+  # TODO: Replace with a faster version?
+  vid = [np.argmin(np.linalg.norm(V - p, axis=1)) for p in orig_x]
+  # Add z coordinate.
+  V = np.concatenate((V, np.zeros([V.shape[0], 1])), axis=1)
+  constraints = {vid[i]: x[orig_to_new[i]] for i in range(len(orig_x))}
+
+  grid_arap = arap.ARAP(V.transpose(), F, vid)
+  res = grid_arap(constraints)
+  return [res.transpose(), F]
+
 
 def sort_edge(edges):
     # return the unique edges
