@@ -316,7 +316,7 @@ class debug_func(Operator):
         initialize_data()
 
     
-        context.scene.path_import = '/Users/jing/research/SmockingDesign/unit_smocking_patterns/leaf.usp'
+        context.scene.path_import = '/Users/avivsegall/projs/SmockingDesign/unit_smocking_patterns/braid.usp'
         bpy.ops.object.import_unit_pattern()
 
         bpy.context.scene.num_x = 3
@@ -343,9 +343,6 @@ class debug_func(Operator):
     
         x0 = X_underlay_ini.flatten()
         
-        #print(X_underlay_ini);
-        
-        
         start_time = time.time()
         res_underlay = np.array(cpp_smocking_solver.embed_underlay(X_underlay_ini, C_underlay_eq))
         '''
@@ -362,8 +359,6 @@ class debug_func(Operator):
 
         X_underlay = np.concatenate((X, np.zeros((len(X),1))), axis=1)
 
-
-
         #------------------ embed the pleat
         X_pleat = sg.V[sg.vid_pleat, 0:2]
 
@@ -375,7 +370,7 @@ class debug_func(Operator):
         w_pleat_eq = 1e3
         w_pleat_var = 1
         start_time = time.time()
-        res_pleat = np.array(cpp_smocking_solver.embed_pleats(X_underlay, X_pleat, C_pleat_eq))
+        res_pleat = np.array(cpp_smocking_solver.embed_pleats(X_underlay, X_pleat, C_pleat_eq, 1, 1, 1e3))
         '''
         res_pleat = minimize(opti_energy_sg_pleat, 
                            x0, 
@@ -395,7 +390,7 @@ class debug_func(Operator):
         print_runtime()
 
         # Run arap.
-        [V, F] = arap_simulate_smocked_design(X_all, fsp.V, sg.dict_sp2sg)
+        [V, F] = arap_simulate_smocked_design(X_all, fsp, sg)
 
         # Show the result.
         smocked_mesh = bpy.data.meshes.new("Smocked")
@@ -1042,29 +1037,38 @@ class SmockingPattern():
 #                      Core functions for smocking pattern
 # ========================================================================
 
-def arap_simulate_smocked_design(x, orig_x, orig_to_new):
-  bbox_min, bbox_max = (np.amin(x, axis=0), np.amax(x, axis=0))
+def arap_simulate_smocked_design(x, fsp, sg):
+  bbox_min, bbox_max = (np.amin(fsp.V, axis=0), np.amax(fsp.V, axis=0))
   margin_x, margin_y = (0.5, 0.5)
-  grid_size = [100, 100]
+  grid_size = [int((bbox_max[0] - bbox_min[0] + 2*margin_x) / 0.15),
+               int((bbox_max[1] - bbox_min[1] + 2*margin_y) / 0.15)]
   # Create grid.
   [gx, gy]= np.meshgrid( \
     np.linspace(bbox_min[0] - margin_x, bbox_max[0] + margin_x, grid_size[0]),
     np.linspace(bbox_min[1] - margin_y, bbox_max[1] + margin_y, grid_size[1]))
   
-  # Create graph from grid.
+  # Create graph from grid. 
   F, V, _ = extract_graph_from_meshgrid(gx, gy, True)
   # Quad -> triangle mesh.
   F = np.array(list(itertools.chain.from_iterable(\
       [(f[[0,1,2]], f[[2,3,0]]) for f in F])))
 
   # TODO: Replace with a faster version?
-  vid = [np.argmin(np.linalg.norm(V - p, axis=1)) for p in orig_x]
+  # Find the closest vertex in the grid to each of the vertices in the coarse one.
+  vid = [np.argmin(np.linalg.norm(V - p, axis=1)) for p in fsp.V]
   # Add z coordinate.
   V = np.concatenate((V, np.zeros([V.shape[0], 1])), axis=1)
-  constraints = {vid[i]: x[orig_to_new[i]] for i in range(len(orig_x))}
+  constraints = {vid[i]: x[sg.dict_sp2sg[i]] for i in range(len(vid))}
+  # Shift by epsilon.
+  # for l in range(len(fsp.stitching_points_line_id)):
+  #   vtx = fsp.get_vid_in_stitching_line(l)
+  #   for i in range(1, len(vtx)):
+  #     eps = np.concatenate([fsp.V[vtx[i], :] - fsp.V[vtx[i - 1], :], [0]]) 
+  #     constraints[vid[vtx[i]]] = constraints[vid[vtx[i]]] + eps*1e-3
 
-  grid_arap = arap.ARAP(V.transpose(), F, vid)
-  res = grid_arap(constraints)
+
+  grid_arap = arap.ARAP(V.transpose(), F, vid, 1)
+  res = grid_arap(constraints, 10)
   return [res.transpose(), F]
 
 
@@ -2007,8 +2011,8 @@ def refresh_stitching_lines():
 
     
 def initialize_collections():
-    delete_all_collections()
     delete_all_objects()
+    delete_all_collections()    
 
     initialize_pattern_collection(COLL_NAME_USP, COLL_NAME_USP_SL)
     initialize_pattern_collection(COLL_NAME_FSP, COLL_NAME_FSP_SL)
@@ -2990,7 +2994,69 @@ class SG_embed_graph(Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        print('Not done yet"/')
+        dt = bpy.types.Scene.solver_data
+        fsp = dt.full_smocking_pattern
+        if len(dt.smocked_graph) == 0:
+          bpy.ops.object.sg_draw_graph()
+        sg = dt.smocked_graph
+    
+        C_underlay_eq, C_pleat_eq = sg.return_distance_constraint()
+
+
+        #----------------- embed the underlay 
+        X_underlay_ini = sg.V[sg.vid_underlay, 0:2]    
+        start_time = time.time()
+        res_underlay = np.array(cpp_smocking_solver.embed_underlay(X_underlay_ini, C_underlay_eq))
+        msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
+        bpy.types.Scene.sl_props.runtime_log.append(msg)
+
+        X = res_underlay.reshape(int(len(res_underlay)),2)
+        X_underlay = np.concatenate((X, np.zeros((len(X),1))), axis=1)
+
+        #------------------ embed the pleat
+        X_pleat = sg.V[sg.vid_pleat, 0:2]
+
+        # option 01: initialize from the original position 
+        X_pleat = np.concatenate((X_pleat, np.ones((len(X_pleat),1))), axis=1)
+        
+        w_pleat_embed = 1
+        w_pleat_eq = 1e3
+        w_pleat_var = 1
+        start_time = time.time()
+        res_pleat = np.array(cpp_smocking_solver.embed_pleats(
+          X_underlay, X_pleat, C_pleat_eq, w_pleat_var, w_pleat_embed, w_pleat_eq))
+        msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
+        bpy.types.Scene.sl_props.runtime_log.append(msg)
+
+        X_pleat = res_pleat.reshape(int(len(res_pleat)), 3)
+        X_all = np.concatenate((X_underlay, X_pleat), axis=0)
+
+        print_runtime()
+
+        # Run arap.
+        [V, F] = arap_simulate_smocked_design(X_all, fsp, sg)
+
+        smocked_mesh = bpy.data.meshes.new("Smocked")
+        smocked_mesh.from_pydata(V,[],F)
+        smocked_mesh.update()
+        obj = bpy.data.objects.new('Smocked mesh', smocked_mesh)
+        obj.location = (0, -30, 0)
+        for f in obj.data.polygons:
+          f.use_smooth = True
+        smocked_collection = bpy.data.collections.new('smocked_collection')
+        bpy.context.scene.collection.children.link(smocked_collection)
+        smocked_collection.objects.link(obj)
+
+        trans = [0,-30, 0]
+        for eid in range(sg.ne):
+            vtxID = sg.E[eid, :]
+            pos = X_all[vtxID, :] + trans
+            if sg.is_edge_underlay(eid):
+                col = col_gray
+            else:
+                col = col_red
+            draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+        
         return {'FINISHED'}
 
 
