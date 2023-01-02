@@ -7,7 +7,7 @@ list(PREPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-file(GLOB SRC_FILES *.cpp)
+file(GLOB SRC_FILES *.cpp SparseAD/src/*.cpp)
 
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 
@@ -35,11 +35,13 @@ add_definitions(-w)
 target_include_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/ceres-solver/2.1.0_1/include/")
 target_include_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/glog/0.6.0/include/")
 target_include_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/gflags/2.2.2/include/")
+target_include_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/libomp/15.0.6/include")
 target_link_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/ceres-solver/2.1.0_1/lib/")
 target_link_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/glog/0.6.0/lib")
 target_link_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/gflags/2.2.2/lib")
+target_link_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/libomp/15.0.6/lib")
 
-target_link_libraries(${PROJECT_NAME} PRIVATE ceres glog gflags)
+target_link_libraries(${PROJECT_NAME} PRIVATE ceres glog gflags omp)
 set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "cpp_smocking_solver")
 set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ${OUTPUT_SUFFIX})
