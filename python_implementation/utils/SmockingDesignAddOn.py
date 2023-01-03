@@ -230,7 +230,30 @@ class debug_clear(Operator):
 
         return {'FINISHED'}
 
-
+class debug_render(Operator):
+  bl_idname = "object.debug_render"
+  bl_label = "Render the smocking design"
+  
+  def execute(self, context):
+    max_z = g_V[2,:].max()
+    bbox_min, bbox_max = (np.amin(g_V, axis=1), np.amax(g_V, axis=1))
+    center = (bbox_max + bbox_min) / 2
+    camLocation = center
+    camLocation[2] = max_z + max((bbox_max - bbox_min)/2) + 7
+    if 'camera' in bpy.data.objects:
+      camera = bpy.data.objects['camera']
+      camera.location = camLocation
+    else:
+      bpy.ops.object.camera_add(location = camLocation)
+      camera = bpy.context.object
+      camera.name = 'camera'
+    camera.data.lens = 20
+    # Look at.
+    direction = Vector(center) - Vector(camLocation)
+    rotQuat = direction.to_track_quat('-Z', 'Y')
+    camera.rotation_euler = rotQuat.to_euler()
+    bpy.ops.render.render()
+    return {'FINISHED'}
 
 class debug_print(Operator):
     bl_idname = "object.debug_print"
@@ -371,7 +394,8 @@ class debug_func(Operator):
         w_pleat_eq = 1e3
         w_pleat_var = 1
         start_time = time.time()
-        res_pleat = np.array(cpp_smocking_solver.embed_pleats(X_underlay, X_pleat, C_pleat_eq, 1, 1, 1e3))
+        res_pleat = np.array(cpp_smocking_solver.embed_pleats(
+          X_underlay, X_pleat, C_pleat_eq, w_pleat_var, w_pleat_embed, w_pleat_eq))
         '''
         res_pleat = minimize(opti_energy_sg_pleat, 
                            x0, 
@@ -1564,6 +1588,8 @@ def delete_everything():
     bpy.data.meshes.remove(m)
   for l in bpy.data.lights:
     bpy.data.lights.remove(l)
+  for o in bpy.data.objects:
+    bpy.data.objects.remove(o)
   bpy.data.orphans_purge()
   bpy.data.orphans_purge()
   bpy.data.orphans_purge()
@@ -2119,9 +2145,13 @@ def initialize_data():
     space = next(space for space in area.spaces if space.type == 'VIEW_3D')
     space.shading.type = 'RENDERED'
     light_data = bpy.data.lights.new(name="sun_data", type='SUN')
-    light_data.energy = 1
+    light_data.energy = 0.8
     light_object = bpy.data.objects.new(name="sun", object_data=light_data)
+    light_object.rotation_euler.y = 0.2
+    light_object.rotation_euler.x = -0.2
     bpy.context.collection.objects.link(light_object)
+    bpy.data.scenes[0].world.use_nodes = True
+    bpy.data.scenes[0].world.node_tree.nodes["Background"].inputs['Color'].default_value = (0.05, 0.05, 0.05, 1.0)
 
 
 
@@ -3194,6 +3224,8 @@ class debug_panel(bpy.types.Panel):
         row = self.layout.row()
         row.operator(RealtimeArapOperator.bl_idname, text="arap", icon="MOD_MESHDEFORM")
         row = self.layout.row()
+        row.operator(debug_render.bl_idname, text="Render", icon='RENDER_STILL')
+        row = self.layout.row()
         row.prop(context.scene, 'if_highlight_button', toggle=False)
 
 
@@ -3612,6 +3644,7 @@ _classes = [
     
     debug_clear,
     debug_print,
+    debug_render,
     debug_func,
 
     debug_panel,
