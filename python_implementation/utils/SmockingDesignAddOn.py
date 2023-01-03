@@ -402,7 +402,6 @@ class debug_func(Operator):
         
         smocked_mesh.update()
         g_mesh = smocked_mesh
-        bpy.ops.arap.realtime_operator()
 
         # Add uv layer
         uvlayer = smocked_mesh.uv_layers.new()
@@ -3137,7 +3136,6 @@ class SG_embed_graph(Operator):
         
         smocked_mesh.update()
         g_mesh = smocked_mesh
-        bpy.ops.arap.realtime_operator()
 
         # Add uv layer
         uvlayer = smocked_mesh.uv_layers.new()
@@ -3193,6 +3191,8 @@ class debug_panel(bpy.types.Panel):
         row.operator(debug_print.bl_idname, text="print data in scene", icon='GHOST_ENABLED')
         row = self.layout.row()
         row.operator(debug_func.bl_idname, text="test function", icon="GHOST_DISABLED")
+        row = self.layout.row()
+        row.operator(RealtimeArapOperator.bl_idname, text="arap", icon="MOD_MESHDEFORM")
         row = self.layout.row()
         row.prop(context.scene, 'if_highlight_button', toggle=False)
 
