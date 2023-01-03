@@ -64,10 +64,11 @@ class ARAP:
     def n_dims( self ):
         return self._pnts.shape[0]
 
-    def __call__( self, anchors: Dict[int,Tuple[float,float,float]], num_iters: Optional[int]=4 ):
+    def __call__( self, anchors: Dict[int,Tuple[float,float,float]], num_iters: Optional[int]=4, def_points = None ):
         con_rhs = self._build_constraint_rhs(anchors)
         R = np.array([np.eye(self.n_dims) for _ in range(self.n_pnts)])
-        def_points = self._solver( self._L.T@self._build_rhs(R) + self._anc_wgt*con_rhs )
+        if def_points is None:
+          def_points = self._solver( self._L.T@self._build_rhs(R) + self._anc_wgt*con_rhs )
         for i in range(num_iters):
             R = self._estimate_rotations( def_points.T )
             def_points = self._solver( self._L.T@self._build_rhs(R) + self._anc_wgt*con_rhs )

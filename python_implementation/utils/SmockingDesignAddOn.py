@@ -20,7 +20,8 @@ import sys
 import os
 
 # TODO: Find a better way to load the module...
-sys.path.append(os.path.dirname(bpy.context.space_data.text.filepath))
+FILE_PATH = os.path.dirname(bpy.context.space_data.text.filepath)
+sys.path.append(FILE_PATH)
 import cpp_smocking_solver
 import arap
 
@@ -319,8 +320,8 @@ class debug_func(Operator):
         context.scene.path_import = '/Users/avivsegall/projs/SmockingDesign/unit_smocking_patterns/braid.usp'
         bpy.ops.object.import_unit_pattern()
 
-        bpy.context.scene.num_x = 3
-        bpy.context.scene.num_y = 3
+        bpy.context.scene.num_x = 5
+        bpy.context.scene.num_y = 5
                 
         bpy.ops.object.create_full_smocking_pattern()
 
@@ -390,36 +391,50 @@ class debug_func(Operator):
         print_runtime()
 
         # Run arap.
-        [V, F] = arap_simulate_smocked_design(X_all, fsp, sg)
+        global g_V, g_F, g_mesh, g_iters, g_arap, g_constraints
+        g_arap, g_constraints, g_F, UV = prepare_arap(X_all, fsp, sg)
+        g_V = g_arap(g_constraints, 0)
+        g_iters = 100
 
         # Show the result.
         smocked_mesh = bpy.data.meshes.new("Smocked")
-        smocked_mesh.from_pydata(V,[],F)
+        smocked_mesh.from_pydata(g_V.T,[],g_F)
+        
         smocked_mesh.update()
+        g_mesh = smocked_mesh
+        bpy.ops.arap.realtime_operator()
+
+        # Add uv layer
+        uvlayer = smocked_mesh.uv_layers.new()
+        for face in smocked_mesh.polygons:
+          for vert_idx, loop_idx in zip(face.vertices, face.loop_indices):
+              uvlayer.data[loop_idx].uv = (UV[vert_idx, 0] / 20.0, UV[vert_idx, 1] / 20.0)
+        
         obj = bpy.data.objects.new('Smocked mesh', smocked_mesh)
-        obj.location = (0, -30, 0)
+        obj.location = (0, 0, 4)
+        obj.data.materials.append(bpy.data.materials['Fabric035'])
         for f in obj.data.polygons:
           f.use_smooth = True
         smocked_collection = bpy.data.collections.new('smocked_collection')
         bpy.context.scene.collection.children.link(smocked_collection)
         smocked_collection.objects.link(obj)
 
-        add_text_to_scene(body="Simulated Smocked Mesh", 
-                          location=(0, -32, 0), 
-                          scale=(1,1,1),
-                          obj_name='grid_annotation',
-                          coll_name=COLL_NAME_USP)
+        # add_text_to_scene(body="Simulated Smocked Mesh", 
+        #                   location=(0, -32, 0), 
+        #                   scale=(1,1,1),
+        #                   obj_name='grid_annotation',
+        #                   coll_name=COLL_NAME_USP)
 
 
-        trans = [0,-30, 0]
-        for eid in range(sg.ne):
-            vtxID = sg.E[eid, :]
-            pos = X_all[vtxID, :] + trans
-            if sg.is_edge_underlay(eid):
-                col = col_gray
-            else:
-                col = col_red
-            draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+        # trans = [0,-30, 0]
+        # for eid in range(sg.ne):
+        #     vtxID = sg.E[eid, :]
+        #     pos = X_all[vtxID, :] + trans
+        #     if sg.is_edge_underlay(eid):
+        #         col = col_gray
+        #     else:
+        #         col = col_red
+        #     draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
         
 
 
@@ -1037,7 +1052,51 @@ class SmockingPattern():
 #                      Core functions for smocking pattern
 # ========================================================================
 
-def arap_simulate_smocked_design(x, fsp, sg):
+g_arap = object()
+g_constraints = object()
+g_V = []
+g_F = []
+g_mesh = object()
+g_iters = 10
+
+class RealtimeArapOperator(bpy.types.Operator):
+    """Show arap iterations"""
+    bl_idname = "arap.realtime_operator"
+    bl_label = "Realtime arap operator"
+
+    _timer = None
+
+    def modal(self, context, event):
+        if event.type in {'ESC'}:
+            self.cancel(context)
+            return {'CANCELLED'}
+
+        if event.type == 'TIMER':
+            global g_V, g_F, g_mesh, g_iters, g_arap, g_constraints
+            wm = context.window_manager
+            wm.event_timer_remove(self._timer)         
+            g_V = g_arap(g_constraints, 1, g_V.T)
+            g_mesh.vertices.foreach_set("co", g_V.T.reshape(g_V.size))
+            g_mesh.update()
+            g_iters -= 1
+            if (g_iters == 0):
+              return {'FINISHED'}
+            self._timer = wm.event_timer_add(0.01, window=context.window)
+
+        return {'PASS_THROUGH'}
+
+    def execute(self, context):
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(0.01, window=context.window)
+        wm.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def cancel(self, context):
+        wm = context.window_manager
+        wm.event_timer_remove(self._timer)
+
+
+def prepare_arap(x, fsp, sg):
   bbox_min, bbox_max = (np.amin(fsp.V, axis=0), np.amax(fsp.V, axis=0))
   margin_x, margin_y = (0.5, 0.5)
   grid_size = [int((bbox_max[0] - bbox_min[0] + 2*margin_x) / 0.15),
@@ -1056,8 +1115,6 @@ def arap_simulate_smocked_design(x, fsp, sg):
   # TODO: Replace with a faster version?
   # Find the closest vertex in the grid to each of the vertices in the coarse one.
   vid = [np.argmin(np.linalg.norm(V - p, axis=1)) for p in fsp.V]
-  # Add z coordinate.
-  V = np.concatenate((V, np.zeros([V.shape[0], 1])), axis=1)
   constraints = {vid[i]: x[sg.dict_sp2sg[i]] for i in range(len(vid))}
   # Shift by epsilon.
   # for l in range(len(fsp.stitching_points_line_id)):
@@ -1066,10 +1123,15 @@ def arap_simulate_smocked_design(x, fsp, sg):
   #     eps = np.concatenate([fsp.V[vtx[i], :] - fsp.V[vtx[i - 1], :], [0]]) 
   #     constraints[vid[vtx[i]]] = constraints[vid[vtx[i]]] + eps*1e-3
 
+  # Add z coordinate.
+  V3D = np.concatenate((V, np.zeros([V.shape[0], 1])), axis=1)
+  grid_arap = arap.ARAP(V3D.transpose(), F, vid, 0.1)
+  return grid_arap, constraints, F, V
 
-  grid_arap = arap.ARAP(V.transpose(), F, vid, 1)
+def arap_simulate_smocked_design(x, fsp, sg):
+  grid_arap, constraints, F, V = prepare_arap(x, fsp, sg)
   res = grid_arap(constraints, 10)
-  return [res.transpose(), F]
+  return [res.transpose(), F, V]
 
 
 def sort_edge(edges):
@@ -1078,7 +1140,6 @@ def sort_edge(edges):
     e_unique = np.unique(e_sort, axis = 0)
     e_unique = np.delete(e_unique, np.where(e_unique[:,0] == e_unique[:, 1]), axis=0)
     return e_unique
-
 
 
 
@@ -1494,6 +1555,19 @@ def get_mat_entry(M, I, J):
 # ========================================================================
 #                          Utility Functions
 # ========================================================================
+
+def delete_everything():
+  for coll in bpy.data.collections:
+    for item in coll.objects:
+      bpy.data.objects.remove(item)
+    bpy.data.collections.remove(coll)
+  for m in bpy.data.meshes:
+    bpy.data.meshes.remove(m)
+  for l in bpy.data.lights:
+    bpy.data.lights.remove(l)
+  bpy.data.orphans_purge()
+  bpy.data.orphans_purge()
+  bpy.data.orphans_purge()
 
 def delete_all_collections():    
     for coll in bpy.data.collections:
@@ -2011,8 +2085,9 @@ def refresh_stitching_lines():
 
     
 def initialize_collections():
-    delete_all_objects()
-    delete_all_collections()    
+    # delete_all_objects()
+    # delete_all_collections()   
+    delete_everything()
 
     initialize_pattern_collection(COLL_NAME_USP, COLL_NAME_USP_SL)
     initialize_pattern_collection(COLL_NAME_FSP, COLL_NAME_FSP_SL)
@@ -2034,6 +2109,22 @@ def initialize_data():
     dt.tmp_fsp1 = []
     dt.tmp_fsp2 = []
     dt.tmp_fsp = []
+
+    for mat in bpy.data.materials:
+      bpy.data.materials.remove(mat)
+      
+    with bpy.data.libraries.load(os.path.join(FILE_PATH, "fabric_material.blend")) as (data_from, data_to):
+      data_to.materials = data_from.materials
+    
+    area = next(area for area in bpy.context.screen.areas if area.type == 'VIEW_3D')
+    space = next(space for space in area.spaces if space.type == 'VIEW_3D')
+    space.shading.type = 'RENDERED'
+    light_data = bpy.data.lights.new(name="sun_data", type='SUN')
+    light_data.energy = 1
+    light_object = bpy.data.objects.new(name="sun", object_data=light_data)
+    bpy.context.collection.objects.link(light_object)
+
+
 
 def print_runtime():
 
@@ -3034,28 +3125,44 @@ class SG_embed_graph(Operator):
         print_runtime()
 
         # Run arap.
-        [V, F] = arap_simulate_smocked_design(X_all, fsp, sg)
+        # [V, F, UV] = arap_simulate_smocked_design(X_all, fsp, sg)
+        global g_V, g_F, g_mesh, g_iters, g_arap, g_constraints
+        g_arap, g_constraints, g_F, UV = prepare_arap(X_all, fsp, sg)
+        g_V = g_arap(g_constraints, 0)
+        g_iters = 100
 
+        # Show the result.
         smocked_mesh = bpy.data.meshes.new("Smocked")
-        smocked_mesh.from_pydata(V,[],F)
+        smocked_mesh.from_pydata(g_V.T,[],g_F)
+        
         smocked_mesh.update()
+        g_mesh = smocked_mesh
+        bpy.ops.arap.realtime_operator()
+
+        # Add uv layer
+        uvlayer = smocked_mesh.uv_layers.new()
+        for face in smocked_mesh.polygons:
+          for vert_idx, loop_idx in zip(face.vertices, face.loop_indices):
+              uvlayer.data[loop_idx].uv = (UV[vert_idx, 0] / 20.0, UV[vert_idx, 1] / 20.0)
+        
         obj = bpy.data.objects.new('Smocked mesh', smocked_mesh)
-        obj.location = (0, -30, 0)
+        obj.location = (0, 0, 4)
+        obj.data.materials.append(bpy.data.materials['Fabric035'])
         for f in obj.data.polygons:
           f.use_smooth = True
         smocked_collection = bpy.data.collections.new('smocked_collection')
         bpy.context.scene.collection.children.link(smocked_collection)
         smocked_collection.objects.link(obj)
 
-        trans = [0,-30, 0]
-        for eid in range(sg.ne):
-            vtxID = sg.E[eid, :]
-            pos = X_all[vtxID, :] + trans
-            if sg.is_edge_underlay(eid):
-                col = col_gray
-            else:
-                col = col_red
-            draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+        # trans = [0,-30, 0]
+        # for eid in range(sg.ne):
+        #     vtxID = sg.E[eid, :]
+        #     pos = X_all[vtxID, :] + trans
+        #     if sg.is_edge_underlay(eid):
+        #         col = col_gray
+        #     else:
+        #         col = col_red
+        #     draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
         
         return {'FINISHED'}
 
@@ -3554,7 +3661,9 @@ _classes = [
     FULLGRID_PT_add_margin,
     FULLGRID_PT_export_mesh,
     
-    SmockedGraph_panel
+    SmockedGraph_panel,
+
+    RealtimeArapOperator,
  ]
 
 
