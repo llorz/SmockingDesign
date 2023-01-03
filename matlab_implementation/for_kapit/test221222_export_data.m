@@ -11,8 +11,8 @@ plot(SP,1)
 
 figure(2); clf;
 plot(SG, 1);
-vid = SG.vid_pleat_border; X = SG.V;
-scatter(X(vid,1 ), X(vid,2),'filled'); % visualize the border
+% vid = SG.vid_pleat_border; X = SG.V;
+% scatter(X(vid,1 ), X(vid,2),'filled'); % visualize the border
 %%
 para = struct();
 para.pleat_height = 1;
@@ -27,7 +27,7 @@ para.opti_display = 'off';
 tic
 [X, C_underlay_eq, C_pleat_eq, X_underlay_ini, X_pleat_ini, X_underlay, X_pleat] = embed_smocked_graph_export(SG, para);
 toc
-
+%%
 figure(6); clf;
 scatter3(X(:,1), X(:,2), X(:, 3), 'filled'); axis equal; hold on;
 
@@ -43,6 +43,18 @@ view([0,90])
 
 vid_pleat_height = setdiff(SG.vid_pleat, SG.vid_pleat_border);
 min(X(vid_pleat_height, 3));
+%%
+figure(4)
+for i = reshape(SG.eid_underlay, 1, [])
+    edge = X(SG.E(i,:), :);
+    plot3(edge(:,1), edge(:,2), edge(:,3),'red','LineWidth',1); hold on;
+end
+
+for i = reshape(SG.eid_pleat, 1, [])
+    edge = X(SG.E(i,:), :);
+    plot3(edge(:,1), edge(:,2), edge(:,3),'blue','LineWidth',1); hold on;
+end
+
 %%
 
 save_dir = ['./results/', SP.patternName, '/'];
