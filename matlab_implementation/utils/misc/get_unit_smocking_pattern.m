@@ -207,6 +207,14 @@ switch lower(type)
             [4,4;3,3;4,2],...
             [1,1; 2,2; 3,1]};
 
+    
+    case 't11'
+        base_x = 2;
+        base_y = 3;
+        sewingLines = {[0,0; 1,0],...
+            [1,1; 2,2]};
+
+
     otherwise
         error('Smocking type not defined!');
 end
