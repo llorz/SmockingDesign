@@ -162,44 +162,8 @@ PROPS = [
     ('pleat_max_embed', bpy.props.FloatProperty(name='max_embed', default=1, min=0.0)), 
     ('pleat_variance', bpy.props.FloatProperty(name='height_var', default=1, min=0.0)), 
     ('arap_constraint_weight', bpy.props.FloatProperty(name='contr_weight', default=1, min=0.0)), 
-    ('arap_num_iters', bpy.props.IntProperty(name='num_iter', default=100, min=0)), 
-    # Smocked graph
+    ('arap_num_iters', bpy.props.IntProperty(name='num_iter', default=100, min=0))
 
-    ('graph_select_type', bpy.props.EnumProperty(items= (('V', 'VERT', 'highlight vertices', 'VERTEXSEL', 0),    
-                                                          ('E', 'EDGE', 'highlight edges', 'EDGESEL', 1)),    
-                                   default="V",
-                                   name = "Select",  
-                                   description = "")),
-    ('graph_highlight_type', bpy.props.EnumProperty(items= (('all', 'all', 'show all vtx/edge'),
-                                                      ('underlay', 'underlay', 'highlight underlay'),    
-                                                      ('pleat', 'pleat', 'hightlight pleat')) ,  
-                                   default="all",
-                                   name = "Highlight",  
-                                   description = "")),
-    ('opti_init_type', bpy.props.EnumProperty(items= (('center', 'center', 'center of stitching lines'),    
-                                                      ('random', 'random', 'random initialization')) ,  
-                                   default="center",
-                                   name = "Initialization",  
-                                   description = "Initialization")),
-    ('opti_init_pleat_height', bpy.props.FloatProperty(name="Initial Pleat Height", default=1, min=0.1, max=5)),
-    
-    ('opti_dist_preserve', bpy.props.EnumProperty(items= (('exact', 'exact', 'exact'),    
-                                                      ('approx', 'approximation', 'approximation')) ,  
-                                   default="exact",
-                                   name = "Constraints",  
-                                   description = "Constraints")),
-
-    ('opti_if_add_delaunay', bpy.props.BoolProperty(name="Add Constraints from Delaunay", default=False)),
-
-    ('opti_mtd', bpy.props.EnumProperty(items= (('Newton', 'Newton-CG', 'Newton Conjugated Gradient'),    
-                                                ('BFGS', 'BFGS', 'BFGS')) ,  
-                                   default="Newton",
-                                   name = "Solver",  
-                                   description = "Solver")),
-
-    ('opti_tol', bpy.props.FloatProperty(name="Tolerance", default=1e-3, min=1e-12, max=0.1)),
-    ('opti_maxIter', bpy.props.IntProperty(name="MaxIter", default=100, min=1, max=100000)),
-    ('opti_if_display', bpy.props.BoolProperty(name="Print convergence messages", default=True))
 
         
     ]
@@ -3071,13 +3035,34 @@ class MagicButtonOperator(Operator):
         sg = dt.smocked_graph
         
         # TODO: fix the relative position
-        if bpy.context.scene.if_show_smocked_graph:
+        if context.window_manager.if_show_smocked_graph:
             sg.plot()
-        if bpy.context.scene.if_show_embedded_graph:
+        if context.window_manager.if_show_embedded_graph:
             sg.plot_embed(dt.embeded_graph)
 
         return {'FINISHED'}
 
+def refresh_smocked_graph(self, context):
+    if self.if_show_smocked_graph:
+        dt = bpy.types.Scene.solver_data
+        sg = dt.smocked_graph
+        sg.plot()
+    else:
+        clean_one_object('graph_annotation')
+        clean_one_object(MESH_NAME_SG)
+    return
+
+
+def refresh_embedded_graph(self, context):
+    if self.if_show_embedded_graph:
+        dt = bpy.types.Scene.solver_data
+        sg = dt.smocked_graph
+        sg.plot_embed(dt.embeded_graph)
+    else:
+        clean_one_object('embed_graph_annotation')
+        clean_one_object(MESH_NAME_SG_EMBED)
+    return
+    
 
 
 class SG_embed_graph(Operator):
@@ -3646,6 +3631,10 @@ class FastSmock_panel(bpy.types.Panel):
 
 
 
+
+
+
+
         
 class Parameter_panel(bpy.types.Panel):
     bl_label = "Simulation Parameters"
@@ -3676,15 +3665,14 @@ class Parameter_panel(bpy.types.Panel):
 
         layout.label(text="Visualization")
         box = layout.box()
-        row = box.row()
-        # TODO: so hacky.... fix the alignment here
-        split = row.split(factor=0.75)
-        col_1 = split.column()
-        col_2 = split.column()
-        col_1.label(text='show smocked graph')
-        col_2.prop(context.scene, 'if_show_smocked_graph', toggle=False, text='')
-        col_1.label(text='show embedded graph')
-        col_2.prop(context.scene, 'if_show_embedded_graph', toggle=False, text='')
+       
+        label = "Hide Smocked Graph" if context.window_manager.if_show_smocked_graph else "Show Smocked Graph"
+
+        box.row().prop(context.window_manager, 'if_show_smocked_graph', text=label, toggle=True)  
+
+
+        label = "Hide Embedded Graph" if context.window_manager.if_show_embedded_graph else "Show Embedded Graph"
+        box.row().prop(context.window_manager, 'if_show_embedded_graph', text=label, toggle=True)  
 
         # layout.label(text="Show the Smocked Graph")
         # box = layout.row().box()
@@ -3727,6 +3715,10 @@ class Parameter_panel(bpy.types.Panel):
 wm = bpy.types.WindowManager
 wm.usp_drawing_started = bpy.props.BoolProperty(default=False)
 wm.fsp_drawing_started = bpy.props.BoolProperty(default=False)
+wm.test_toggle = bpy.props.BoolProperty(default=False)
+wm.if_show_smocked_graph = bpy.props.BoolProperty(default=True, update=refresh_smocked_graph)
+wm.if_show_embedded_graph = bpy.props.BoolProperty(default=False, update=refresh_embedded_graph)
+
 
 
 _classes = [
@@ -3742,6 +3734,7 @@ _classes = [
     FastSmock_panel,
 
     Parameter_panel,
+
 
     # Debug.
     debug_panel,
@@ -4663,3 +4656,44 @@ if __name__ == "__main__":
 #                'eps_enq': -1e-6,
 #                'w_pleat_eq': 1e5,
 #                'w_pleat_neq': 1e3}
+
+
+
+
+    # # Smocked graph
+
+    # ('graph_select_type', bpy.props.EnumProperty(items= (('V', 'VERT', 'highlight vertices', 'VERTEXSEL', 0),    
+    #                                                       ('E', 'EDGE', 'highlight edges', 'EDGESEL', 1)),    
+    #                                default="V",
+    #                                name = "Select",  
+    #                                description = "")),
+    # ('graph_highlight_type', bpy.props.EnumProperty(items= (('all', 'all', 'show all vtx/edge'),
+    #                                                   ('underlay', 'underlay', 'highlight underlay'),    
+    #                                                   ('pleat', 'pleat', 'hightlight pleat')) ,  
+    #                                default="all",
+    #                                name = "Highlight",  
+    #                                description = "")),
+    # ('opti_init_type', bpy.props.EnumProperty(items= (('center', 'center', 'center of stitching lines'),    
+    #                                                   ('random', 'random', 'random initialization')) ,  
+    #                                default="center",
+    #                                name = "Initialization",  
+    #                                description = "Initialization")),
+    # ('opti_init_pleat_height', bpy.props.FloatProperty(name="Initial Pleat Height", default=1, min=0.1, max=5)),
+    
+    # ('opti_dist_preserve', bpy.props.EnumProperty(items= (('exact', 'exact', 'exact'),    
+    #                                                   ('approx', 'approximation', 'approximation')) ,  
+    #                                default="exact",
+    #                                name = "Constraints",  
+    #                                description = "Constraints")),
+
+    # ('opti_if_add_delaunay', bpy.props.BoolProperty(name="Add Constraints from Delaunay", default=False)),
+
+    # ('opti_mtd', bpy.props.EnumProperty(items= (('Newton', 'Newton-CG', 'Newton Conjugated Gradient'),    
+    #                                             ('BFGS', 'BFGS', 'BFGS')) ,  
+    #                                default="Newton",
+    #                                name = "Solver",  
+    #                                description = "Solver")),
+
+    # ('opti_tol', bpy.props.FloatProperty(name="Tolerance", default=1e-3, min=1e-12, max=0.1)),
+    # ('opti_maxIter', bpy.props.IntProperty(name="MaxIter", default=100, min=1, max=100000)),
+    # ('opti_if_display', bpy.props.BoolProperty(name="Print convergence messages", default=True))
