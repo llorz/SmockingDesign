@@ -112,8 +112,8 @@ PROPS = [
     # fast smocking
     ('path_import', bpy.props.StringProperty(subtype='FILE_PATH', name='File')),
     ('path_import_fullpattern', bpy.props.StringProperty(subtype='FILE_PATH', name='File', default='/tmp/my_pattern_name.obj')),
-    ('fastsmock_select', bpy.props.EnumProperty(items= (('U', 'UnitPattern', 'load existing unit pattern', 'VERTEXSEL', 0),    
-                                                        ('F', 'FullPattern', 'load existing full pattern', 'FACESEL', 1)) ,  
+    ('fastsmock_select', bpy.props.EnumProperty(items= (('U', 'UnitPattern', 'load existing unit pattern', 'EVENT_U', 0),    
+                                                        ('F', 'FullPattern', 'load existing full pattern', 'EVENT_F', 1)) ,  
                                    default="U",
                                    name = "Load",  
                                    description = "")),
@@ -233,16 +233,16 @@ class SolverData():
 
 
 
-class OptiData():
-    C_underlay_eq = []
-    C_underlay_neq = []
-    C_pleat_eq = []
-    C_pleat_neq = []
-    weights = {'w_underlay_eq': 1e5, 
-               'w_underlay_neq': 1e2,
-               'eps_enq': -1e-6,
-               'w_pleat_eq': 1e5,
-               'w_pleat_neq': 1e3}
+# class OptiData():
+#     C_underlay_eq = []
+#     C_underlay_neq = []
+#     C_pleat_eq = []
+#     C_pleat_neq = []
+#     weights = {'w_underlay_eq': 1e5, 
+#                'w_underlay_neq': 1e2,
+#                'eps_enq': -1e-6,
+#                'w_pleat_eq': 1e5,
+#                'w_pleat_neq': 1e3}
 
 
 # ========================================================================
@@ -339,50 +339,7 @@ class debug_print(Operator):
                 
         return {'FINISHED'}
 
-def opti_energy_maximize_embedding(X):
-    D = squareform(pdist(X,'euclidean'))  
-    fval = -np.sum(np.sum(D))
-    return fval
 
-
-def opti_energy_pleat_height_varicance(X_pleat):
-    fval = np.var(X_pleat[:,2])
-    return fval
-
-
-def opti_energy_preserve_edge_length(X, C_eq):
-    I = C_eq[:,0].astype(int)
-    J = C_eq[:,1].astype(int)
-    d_eq = np.sqrt(np.sum(np.power(X[I, :] - X[J, :], 2),axis = 1))
-    fval = sum(np.power(d_eq - C_eq[:,2], 2))
-    return fval
-
-
-
-def opti_energy_sg_underlay(x_in, C_eq):
-    # energy to embedding the underaly graph of the smocked graph
-    X = x_in.reshape(int(len(x_in)/2), 2) # x_in the flattened xy-coordinates of the underaly graph
-    return opti_energy_preserve_edge_length(X, C_eq)
-
-
-def opti_energy_sg_pleat(x_pleat_in, 
-                         X_underlay, 
-                         C_pleat_eq,
-                         w_embed=1,
-                         w_eq=1e4,
-                         w_var = 1):
-    if len(X_underlay[0]) == 2:    
-        X_underlay = np.concatenate((X_underlay, np.zeros((len(X_underlay),1))), axis=1)
-
-    X_pleat = x_pleat_in.reshape(int(len(x_pleat_in)/3), 3)
-
-    X = np.concatenate((X_underlay, X_pleat), axis = 0)
-
-    fval = w_embed*opti_energy_maximize_embedding(X) +\
-           w_eq*opti_energy_preserve_edge_length(X, C_pleat_eq) +\
-           w_var*opti_energy_pleat_height_varicance(X_pleat)
-
-    return fval
 
 
 class debug_func(Operator):
@@ -559,151 +516,6 @@ class debug_func(Operator):
         return {'FINISHED'}
 
 
-def opti_energy_sg_pleat_old(x_pleat_in,
-                         X_underlay,
-                         C_pleat_neq, 
-                         w_pleat_neq=1e6, 
-                         w_var = 1e1,
-                         eps_neq=-1e-3,
-                         if_return_all_terms=False):
-
-    if len(X_underlay[0]) == 2:    
-        X_underlay = np.concatenate((X_underlay, np.zeros((len(X_underlay),1))), axis=1)
-
-    X_pleat = x_pleat_in.reshape(int(len(x_pleat_in)/3), 3)
-
-    X = np.concatenate((X_underlay, X_pleat), axis = 0)
-    
-    D1 = squareform(pdist(X,'euclidean'))  
-    
-    # maximize the embedding: such that the vertices are far from eath other
-    fval_max = -np.sum(np.sum(D1))
-
-    # make usre the inequality is satisfied
-    d_neq = get_mat_entry(D1, C_pleat_neq[:,0], C_pleat_neq[:, 1])
-    # fval_neq = sum(d_neq - C_pleat_neq[:,2] > eps_neq)
-    fval_neq = sum(np.power(d_neq - C_pleat_neq[:,2], 2))
-
-
-    # penalize the variance of the height
-    fval_var = np.var(X_pleat[:,2])
-
-    fval = fval_max + w_pleat_neq*fval_neq + w_var*fval_var
-
-    # print(fval)
-    if if_return_all_terms: # for debug
-        return fval_max, fval_neq, fval_var
-    else:
-        return fval
-
-
-
-# TODO: need to update according the user input
-def opti_get_BFGS_solver_options():
-    bfgs_options =  {'disp': True, 
-                   'verbose':1, 
-                   'xtol':1e-6, 
-                   'ftol':1e-6, 
-                   'maxiter':1e6, 
-                   'maxfun':1e6}
-
-    return bfgs_options
-
-
-# TODO: need to update according the user input
-def opti_get_NelderMead_solver_options():
-    
-    nm_options =  {'disp': True, 
-                   'verbose':1, 
-                   'xtol':1e-6, 
-                   'ftol':1e-6, 
-                   'maxiter':1e6, 
-                   'maxfun':1e6}
-
-    return nm_options
-
-def opti_energy_sg_underlay_old(x_in,
-                            C_eq, 
-                            C_neq, 
-                            w_eq=1e2,
-                            w_neq=1e6, 
-                            eps_neq=-1e-3,
-                            if_return_all_terms=False):
-    # energy to embedding the underaly graph of the smocked graph
-    x = x_in.reshape(int(len(x_in)/2), 2) # x_in the flattened xy-coordinates of the underaly graph
-    D1 = squareform(pdist(x,'euclidean'))
-
-    # maximize the embedding: such that the vertices are far from eath other
-    fval_max = -np.sum(np.sum(D1))
-
-    # make sure the equality is satisfied
-    d_eq = get_mat_entry(D1, C_eq[:, 0], C_eq[:, 1])
-    fval_eq = sum(np.power(d_eq - C_eq[:,2], 2))
-
-    # make usre the inequality is satisfied
-    d_neq = get_mat_entry(D1, C_neq[:,0], C_neq[:, 1])
-    fval_neq = sum(d_neq - C_neq[:,2] > eps_neq)
-
-    fval = fval_max + w_eq*fval_eq + w_neq*fval_neq
-    # print(fval)
-    if if_return_all_terms: # for debug
-        return fval_max, fval_eq, fval_neq
-    else:
-        return fval
-
-
-
-# TOOD: 
-def SG_find_valid_underlay_constraints_approx(sg, D):
-    # find inexact distance constraints if the underlay graph is too large
-    # check every triplet of vertices can be time consuming
-
-    print('Not done yet:/')
-
-
-
-
-def SG_find_valid_underlay_constraints_exact(sg, D):
-    # for the smocked graph (sg)
-    # find the valid the distance constraints in exact way
-    # i.e., consider all pairs of vertices
-
-    # input: D stores the pairwise distance constraint for the underlay graph
-    # extracted from the smocking pattern (to make sure the fabric won't break)
-    # but not all of them are useful for embedding optimization
-
-    start_time = time.time()
-        
-
-    # all combinations of (i,j,k) - a triplet of three vertices
-    c = nchoosek(range(sg.nv_underlay), 3)
-    # we then check how many of them are useless
-    # in exact way
-    useless_constr = []
-    for i, j, k in zip(c[:,0], c[:,1], c[:,2]):
-        if D[i,j] + D[i, k] < D[k, j]:
-            useless_constr.append([k,j])
-
-        if D[i,j] + D[k,j] <  D[i,k]:
-            useless_constr.append([i,k])
-
-        if D[i,k] + D[k,j] < D[i,j]:
-            useless_constr.append([i,j])
-
-
-    # remove redundant pairs
-    useless_constr = sort_edge(useless_constr)
-
-    # all vertex pairs
-    A = nchoosek(range(sg.nv_underlay), 2)
-    
-    idx_diff, _ = setdiffnd(A, useless_constr)
-    
-    constrained_vtx_pair = A[idx_diff]
-    msg = 'runtime: find constraints (exact): %f second' % (time.time() - start_time)
-    bpy.types.Scene.sl_props.runtime_log.append(msg)
-
-    return constrained_vtx_pair
 
 
     
@@ -3973,7 +3785,7 @@ class FastSmock_panel(bpy.types.Panel):
 
         row = layout.row()
         row.alert=context.scene.if_highlight_button
-        row.operator(MagicButtonOperator.bl_idname, text="Run Simulation", icon='FILE_VOLUME')
+        row.operator(MagicButtonOperator.bl_idname, text="Run Simulation", icon='MOD_CLOTH')
         layout.row()
 
 
@@ -4557,3 +4369,205 @@ if __name__ == "__main__":
 #         X_all = np.concatenate((X_underlay, X_pleat), axis=0)
 
 #         # print(X_all)
+
+
+
+
+#--------------------------------------
+#  old embedding code
+#--------------------------------------
+
+# def opti_energy_maximize_embedding(X):
+#     D = squareform(pdist(X,'euclidean'))  
+#     fval = -np.sum(np.sum(D))
+#     return fval
+
+
+# def opti_energy_pleat_height_varicance(X_pleat):
+#     fval = np.var(X_pleat[:,2])
+#     return fval
+
+
+# def opti_energy_preserve_edge_length(X, C_eq):
+#     I = C_eq[:,0].astype(int)
+#     J = C_eq[:,1].astype(int)
+#     d_eq = np.sqrt(np.sum(np.power(X[I, :] - X[J, :], 2),axis = 1))
+#     fval = sum(np.power(d_eq - C_eq[:,2], 2))
+#     return fval
+
+
+
+# def opti_energy_sg_underlay(x_in, C_eq):
+#     # energy to embedding the underaly graph of the smocked graph
+#     X = x_in.reshape(int(len(x_in)/2), 2) # x_in the flattened xy-coordinates of the underaly graph
+#     return opti_energy_preserve_edge_length(X, C_eq)
+
+
+# def opti_energy_sg_pleat(x_pleat_in, 
+#                          X_underlay, 
+#                          C_pleat_eq,
+#                          w_embed=1,
+#                          w_eq=1e4,
+#                          w_var = 1):
+#     if len(X_underlay[0]) == 2:    
+#         X_underlay = np.concatenate((X_underlay, np.zeros((len(X_underlay),1))), axis=1)
+
+#     X_pleat = x_pleat_in.reshape(int(len(x_pleat_in)/3), 3)
+
+#     X = np.concatenate((X_underlay, X_pleat), axis = 0)
+
+#     fval = w_embed*opti_energy_maximize_embedding(X) +\
+#            w_eq*opti_energy_preserve_edge_length(X, C_pleat_eq) +\
+#            w_var*opti_energy_pleat_height_varicance(X_pleat)
+
+#     return fval
+
+
+# def opti_energy_sg_pleat_old(x_pleat_in,
+#                          X_underlay,
+#                          C_pleat_neq, 
+#                          w_pleat_neq=1e6, 
+#                          w_var = 1e1,
+#                          eps_neq=-1e-3,
+#                          if_return_all_terms=False):
+
+#     if len(X_underlay[0]) == 2:    
+#         X_underlay = np.concatenate((X_underlay, np.zeros((len(X_underlay),1))), axis=1)
+
+#     X_pleat = x_pleat_in.reshape(int(len(x_pleat_in)/3), 3)
+
+#     X = np.concatenate((X_underlay, X_pleat), axis = 0)
+    
+#     D1 = squareform(pdist(X,'euclidean'))  
+    
+#     # maximize the embedding: such that the vertices are far from eath other
+#     fval_max = -np.sum(np.sum(D1))
+
+#     # make usre the inequality is satisfied
+#     d_neq = get_mat_entry(D1, C_pleat_neq[:,0], C_pleat_neq[:, 1])
+#     # fval_neq = sum(d_neq - C_pleat_neq[:,2] > eps_neq)
+#     fval_neq = sum(np.power(d_neq - C_pleat_neq[:,2], 2))
+
+
+#     # penalize the variance of the height
+#     fval_var = np.var(X_pleat[:,2])
+
+#     fval = fval_max + w_pleat_neq*fval_neq + w_var*fval_var
+
+#     # print(fval)
+#     if if_return_all_terms: # for debug
+#         return fval_max, fval_neq, fval_var
+#     else:
+#         return fval
+
+
+
+# # TODO: need to update according the user input
+# def opti_get_BFGS_solver_options():
+#     bfgs_options =  {'disp': True, 
+#                    'verbose':1, 
+#                    'xtol':1e-6, 
+#                    'ftol':1e-6, 
+#                    'maxiter':1e6, 
+#                    'maxfun':1e6}
+
+#     return bfgs_options
+
+
+# # TODO: need to update according the user input
+# def opti_get_NelderMead_solver_options():
+    
+#     nm_options =  {'disp': True, 
+#                    'verbose':1, 
+#                    'xtol':1e-6, 
+#                    'ftol':1e-6, 
+#                    'maxiter':1e6, 
+#                    'maxfun':1e6}
+
+#     return nm_options
+
+# def opti_energy_sg_underlay_old(x_in,
+#                             C_eq, 
+#                             C_neq, 
+#                             w_eq=1e2,
+#                             w_neq=1e6, 
+#                             eps_neq=-1e-3,
+#                             if_return_all_terms=False):
+#     # energy to embedding the underaly graph of the smocked graph
+#     x = x_in.reshape(int(len(x_in)/2), 2) # x_in the flattened xy-coordinates of the underaly graph
+#     D1 = squareform(pdist(x,'euclidean'))
+
+#     # maximize the embedding: such that the vertices are far from eath other
+#     fval_max = -np.sum(np.sum(D1))
+
+#     # make sure the equality is satisfied
+#     d_eq = get_mat_entry(D1, C_eq[:, 0], C_eq[:, 1])
+#     fval_eq = sum(np.power(d_eq - C_eq[:,2], 2))
+
+#     # make usre the inequality is satisfied
+#     d_neq = get_mat_entry(D1, C_neq[:,0], C_neq[:, 1])
+#     fval_neq = sum(d_neq - C_neq[:,2] > eps_neq)
+
+#     fval = fval_max + w_eq*fval_eq + w_neq*fval_neq
+#     # print(fval)
+#     if if_return_all_terms: # for debug
+#         return fval_max, fval_eq, fval_neq
+#     else:
+#         return fval
+
+
+
+# # TOOD: 
+# def SG_find_valid_underlay_constraints_approx(sg, D):
+#     # find inexact distance constraints if the underlay graph is too large
+#     # check every triplet of vertices can be time consuming
+
+#     print('Not done yet:/')
+
+
+
+
+# def SG_find_valid_underlay_constraints_exact(sg, D):
+#     # for the smocked graph (sg)
+#     # find the valid the distance constraints in exact way
+#     # i.e., consider all pairs of vertices
+
+#     # input: D stores the pairwise distance constraint for the underlay graph
+#     # extracted from the smocking pattern (to make sure the fabric won't break)
+#     # but not all of them are useful for embedding optimization
+
+#     start_time = time.time()
+        
+
+#     # all combinations of (i,j,k) - a triplet of three vertices
+#     c = nchoosek(range(sg.nv_underlay), 3)
+#     # we then check how many of them are useless
+#     # in exact way
+#     useless_constr = []
+#     for i, j, k in zip(c[:,0], c[:,1], c[:,2]):
+#         if D[i,j] + D[i, k] < D[k, j]:
+#             useless_constr.append([k,j])
+
+#         if D[i,j] + D[k,j] <  D[i,k]:
+#             useless_constr.append([i,k])
+
+#         if D[i,k] + D[k,j] < D[i,j]:
+#             useless_constr.append([i,j])
+
+
+#     # remove redundant pairs
+#     useless_constr = sort_edge(useless_constr)
+
+#     # all vertex pairs
+#     A = nchoosek(range(sg.nv_underlay), 2)
+    
+#     idx_diff, _ = setdiffnd(A, useless_constr)
+    
+#     constrained_vtx_pair = A[idx_diff]
+#     msg = 'runtime: find constraints (exact): %f second' % (time.time() - start_time)
+#     bpy.types.Scene.sl_props.runtime_log.append(msg)
+
+#     return constrained_vtx_pair
+
+
+
