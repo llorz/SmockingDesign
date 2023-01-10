@@ -106,27 +106,37 @@ MESH_NAME_P2 = 'Pattern02'
 # global variables from user input
 
 PROPS = [
+    
     ('if_highlight_button', bpy.props.BoolProperty(name="highlight buttons", default=True)),
+
+    # fast smocking
+    ('path_import', bpy.props.StringProperty(subtype='FILE_PATH', name='File')),
+    ('path_import_fullpattern', bpy.props.StringProperty(subtype='FILE_PATH', name='File', default='/tmp/my_pattern_name.obj')),
+    ('fastsmock_select', bpy.props.EnumProperty(items= (('U', 'UnitPattern', 'load existing unit pattern', 'VERTEXSEL', 0),    
+                                                        ('F', 'FullPattern', 'load existing full pattern', 'FACESEL', 1)) ,  
+                                   default="U",
+                                   name = "Load",  
+                                   description = "")),
+    
+    
     # for unit grid
     ('base_x', bpy.props.IntProperty(name='X', default=3, min=1, max=20)),
     ('base_y', bpy.props.IntProperty(name='Y', default=3, min=1, max=20)),
     # import/export stitching lines
     ('path_export', bpy.props.StringProperty(subtype='DIR_PATH', name='Path',default='/tmp/')),
     ('filename_export', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
-    ('path_import', bpy.props.StringProperty(subtype='FILE_PATH', name='File')),
     # for full grid (full smocking pattern)
-    ('num_x', bpy.props.IntProperty(name='Repeat along X-axis', default=3, min=1, max=20)),
-    ('num_y', bpy.props.IntProperty(name='Repeat along Y-axis', default=3, min=1, max=20)),
-    ('shift_x', bpy.props.IntProperty(name='Shift along X-axis', default=0, min=-10, max=10)),
-    ('shift_y', bpy.props.IntProperty(name='Shift along Y-axis', default=0, min=-10, max=10)),
+    ('num_x', bpy.props.IntProperty(name='X: repeat', default=3, min=1, max=20)),
+    ('num_y', bpy.props.IntProperty(name='Y: repeat', default=3, min=1, max=20)),
+    ('shift_x', bpy.props.IntProperty(name='X: shift', default=0, min=-10, max=10)),
+    ('shift_y', bpy.props.IntProperty(name='Y: shift', default=0, min=-10, max=10)),
 #    ('type_tile', bpy.props.EnumProperty(items = [("regular", "regular", "tile in a regular grid"), ("radial", "radial", "tile in a radial grid")], name="Type", default="regular")),
     ('margin_top', bpy.props.FloatProperty(name='Top', default=0, min=0, max=10)),
     ('margin_bottom', bpy.props.FloatProperty(name='Bottom', default=0, min=0, max=10)),
     ('margin_left', bpy.props.FloatProperty(name='Left', default=0, min=0, max=10)),
     ('margin_right', bpy.props.FloatProperty(name='Right', default=0, min=0, max=10)),
     # export the full smocking pattern as obj
-    ('path_export_fullpattern', bpy.props.StringProperty(subtype='FILE_PATH', name='Path', default='/tmp/')),
-    ('path_import_fullpattern', bpy.props.StringProperty(subtype='FILE_PATH', name='Path', default='/tmp/my_pattern_name.obj')),
+    ('path_export_fullpattern', bpy.props.StringProperty(subtype='DIR_PATH', name='Path', default='/tmp/')),
     ('filename_export_fullpattern', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
     ('export_format', bpy.props.EnumProperty(items = [(".obj", "OBJ", ".obj"), (".off", "OFF", ".off")], name="Format", default=".obj")),
     # FSP: combine two patterns
@@ -137,6 +147,7 @@ PROPS = [
                                                           name="Combine", default="x")),
     ('combine_space', bpy.props.IntProperty(name='Spacing', default=2, min=1, max=20)),
     ('combine_shift', bpy.props.IntProperty(name='Shift', default=0, min=-20, max=20)),
+    
     ('fsp_edit_selection', bpy.props.EnumProperty(items= (('V', 'VERT', 'move vertices', 'VERTEXSEL', 0),    
                                                           ('E', 'EDGE', 'move edges', 'EDGESEL', 1),    
                                                           ('F', 'FACE', 'add/delete faces', 'FACESEL', 2)) ,  
@@ -2627,7 +2638,7 @@ class USP_CreateGrid(Operator):
         usp_loc, _ = update_usp_fsp_location()
 
 
-        add_text_to_scene(body="Unit Smocking Pattern", 
+        add_text_to_scene(body="Create Unit Pattern", 
                           location=(0, usp_loc[1] + base_y + LAYOUT_TEXT, 0), 
                           scale=(1,1,1),
                           obj_name='grid_annotation',
@@ -3476,29 +3487,14 @@ class debug_panel(bpy.types.Panel):
 
 
 
-class UnitGrid_panel:
+class UnitGrid_panel(bpy.types.Panel):
+    bl_label = "Unit Smocking Pattern"
+    bl_idname = "SD_PT_unit_grid_main"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "SmockingDesign"
     bl_options ={"HEADER_LAYOUT_EXPAND"}
-     
-    
 
-class UNITGRID_PT_main(UnitGrid_panel, bpy.types.Panel):
-    bl_label = "Unit Smocking Pattern"
-    bl_idname = "SD_PT_unit_grid_main"
-    bl_options ={"DEFAULT_CLOSED"}
-            
-    def draw(self, context):
-        pass
-
-    
-class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
-    bl_parent_id = 'SD_PT_unit_grid_main'
-    bl_label = "Create a New Pattern"
-    bl_options ={"DEFAULT_CLOSED"}
-    
-    
     def draw(self, context):
         props = context.scene.sl_props
         layout = self.layout
@@ -3549,31 +3545,7 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
         row.alert=context.scene.if_highlight_button
         row.operator(ExportUnitPattern.bl_idname, text="Export", icon='EXPORT')
         box.row()
-        
-                 
-
-
-
-
-class UNITGRID_PT_load(UnitGrid_panel, bpy.types.Panel):
-    bl_parent_id = 'SD_PT_unit_grid_main'
-    bl_label = "Load Existing Pattern"
-    bl_options ={"DEFAULT_CLOSED"}
     
-    def draw(self, context):
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False  # No animation.
-
-#        layout.label(text= "Load an Existing Pattern")
-        box = layout.box()
-        box.row()
-        box.row().prop(context.scene, 'path_import')
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(ImportUnitPattern.bl_idname, text="Import", icon='IMPORT')
-        box.row()
-
 
 
 
@@ -3925,25 +3897,25 @@ class FULLGRID_PT_export_mesh(FullGrid_panel, bpy.types.Panel):
         row.operator(FSP_Export.bl_idname, text="Export", icon='EXPORT')
         box.row()
         
-class FULLGRID_PT_import_mesh(FullGrid_panel, bpy.types.Panel):
-    bl_label = "Import full smocking pattern"
-    bl_parent_id = 'SD_PT_full_grid_main'
-    bl_options ={"DEFAULT_CLOSED"}
+# class FULLGRID_PT_import_mesh(FullGrid_panel, bpy.types.Panel):
+#     bl_label = "Import full smocking pattern"
+#     bl_parent_id = 'SD_PT_full_grid_main'
+#     bl_options ={"DEFAULT_CLOSED"}
     
-    def draw(self, context):
-      layout = self.layout
-      layout.use_property_split = True
-      layout.use_property_decorate = False  # No animation.
+#     def draw(self, context):
+#       layout = self.layout
+#       layout.use_property_split = True
+#       layout.use_property_decorate = False  # No animation.
 
-      box = layout.box()
-      box.row()
+#       box = layout.box()
+#       box.row()
       
-      box.row().prop(context.scene, 'path_import_fullpattern')
+#       box.row().prop(context.scene, 'path_import_fullpattern')
       
-      row = box.row()
-      row.alert=context.scene.if_highlight_button
-      row.operator(FSP_Import.bl_idname, text="Import", icon='IMPORT')
-      box.row()
+#       row = box.row()
+#       row.alert=context.scene.if_highlight_button
+#       row.operator(FSP_Import.bl_idname, text="Import", icon='IMPORT')
+#       box.row()
 
 
 
@@ -3961,29 +3933,47 @@ class FastSmock_panel(bpy.types.Panel):
         layout.use_property_split = True
         layout.use_property_decorate = False  # No animation.
 
-        layout.label(text= "Load an Existing Pattern")
-        box = layout.box()
-        box.row()
-        box.row().prop(context.scene, 'path_import')
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(ImportUnitPattern.bl_idname, text="Import", icon='IMPORT')
-        box.row()
+        row = layout.row()
+        row.operator(debug_clear.bl_idname, text="clear everything", icon='QUIT')
+
+        layout.row().prop(context.scene, 'fastsmock_select', expand=True)
+
+        if context.scene.fastsmock_select=='U':
+
+            layout.label(text= "Load a Unit Pattern")
+            box = layout.box()
+            box.row()
+            box.row().prop(context.scene, 'path_import')
+            row = box.row()
+            row.alert=context.scene.if_highlight_button
+            row.operator(ImportUnitPattern.bl_idname, text="Import", icon='IMPORT')
+            box.row()
 
 
-        layout.label(text= "Tile the Unit Pattern")
-        box = layout.box()
-        box.row()
-        box.row().prop(context.scene,'num_x')
-        box.row().prop(context.scene,'num_y')
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
-        box.row()
+            layout.label(text= "Tile the Unit Pattern")
+            box = layout.box()
+            box.row()
+            box.row().prop(context.scene,'num_x')
+            box.row().prop(context.scene,'num_y')
+            row = box.row()
+            row.alert=context.scene.if_highlight_button
+            row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
+            box.row()
+        else:
+            layout.label(text= "Load a Full Pattern")
+            box = layout.box()
+            box.row()
+      
+            box.row().prop(context.scene, 'path_import_fullpattern')      
+            row = box.row()
+            row.alert=context.scene.if_highlight_button
+            row.operator(FSP_Import.bl_idname, text="Import", icon='IMPORT')
+            box.row()
+
 
         row = layout.row()
         row.alert=context.scene.if_highlight_button
-        row.operator(MagicButtonOperator.bl_idname, text="Simulate the Smocking Pattern", icon='FILE_VOLUME')
+        row.operator(MagicButtonOperator.bl_idname, text="Run Simulation", icon='FILE_VOLUME')
         layout.row()
 
 
@@ -4047,6 +4037,7 @@ wm.fsp_drawing_started = bpy.props.BoolProperty(default=False)
 
 _classes = [
     
+
     debug_clear,
     debug_print,
     debug_render,
@@ -4054,13 +4045,13 @@ _classes = [
     debug_func,
 
     # UI panels.
+    FastSmock_panel,
 
     # Debug.
     debug_panel,
     # Unit grid panel.
-    UNITGRID_PT_main,
-    UNITGRID_PT_create,
-    UNITGRID_PT_load,
+    UnitGrid_panel,
+
     # Full smocking pattern panel.
     FULLGRID_PT_main,
     FULLGRID_PT_tile,
@@ -4069,7 +4060,7 @@ _classes = [
     FULLGRID_PT_edit_pattern,
     FULLGRID_PT_add_margin,
     FULLGRID_PT_export_mesh,
-    FULLGRID_PT_import_mesh,
+    # FULLGRID_PT_import_mesh,
     # Embedding panel
     embedding_panel,
     # Arap panel
@@ -4078,7 +4069,7 @@ _classes = [
     CylinderArap,
     # Smocked graph panel.
     SmockedGraph_panel,
-    FastSmock_panel,
+
     
     USP_CreateGrid,
     USP_SaveCurrentStitchingLine,
