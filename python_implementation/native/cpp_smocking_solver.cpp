@@ -6,6 +6,7 @@
 
 #include "SparseAD/include/Dual.h"
 #include "SparseAD/include/Problem.h"
+#include "param.h"
 
 template<typename T>
 Eigen::MatrixX<T> std_to_eig(const std::vector<std::vector<T>>& vec) {
@@ -194,5 +195,5 @@ PYBIND11_MODULE(cpp_smocking_solver, m) {
   m.doc() = "Ceres solver for smocking";
   m.def("embed_underlay", &embed_underlay, "Embed underlay graph.");
   m.def("embed_pleats", &embed_pleats, "Embed pleats graph.");
-  m.def("get_isometry_distortion", &get_isometry_distortion, "Get isometry distortion.");
+  m.def("bary_coords", &bary_coords, "Get isometry distortion.");
 }

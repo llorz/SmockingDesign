@@ -1219,9 +1219,11 @@ def prepare_cylinder_arap(V, F, pattern_arap, fsp, sg, weight = 1):
   # Fold to a cylinder along the x direction.
   r = l[0] / (2 * np.pi)
 
-  cyl_uv, cyl_verts = wrapping.create_cylinder(l)
-  constraints = wrapping.get_constraints_from_param(underlay_locations, underlay_anchors,
-  cyl_uv, cyl_verts)
+  cyl_uv, cyl_verts, cyl_faces = wrapping.create_cylinder(l)
+  # constraints = wrapping.get_constraints_from_param(underlay_locations, underlay_anchors,
+  # cyl_uv, cyl_verts)
+  constraints, delete_verts = wrapping.get_constraints_from_param_bary(V, 
+  anchor_ids, fsp, sg, cyl_uv, cyl_verts, cyl_faces)
 
   # # Shift up by r.
   # underlay_locations = np.concatenate([underlay_locations[:,0:2], r * np.ones([num_underlay, 1])], axis=1)
