@@ -94,7 +94,8 @@ COLL_NAME_FSP_TMP_SL = "FSP_tmp_SL"
 
 COLL_NAME_SG = "SmockedGraph"
 COLL_NAME_SG_SL = "SmockedGraphStrokes"
-MESH_NAME_SG = "Graph"
+MESH_NAME_SG = "SmockedGraph"
+MESH_NAME_SG_EMBED = "SmockedGraphEmbedded"
 
 MESH_NAME_USP = "Grid"
 MESH_NAME_FSP = "FullPattern"
@@ -233,16 +234,6 @@ class SolverData():
 
 
 
-# class OptiData():
-#     C_underlay_eq = []
-#     C_underlay_neq = []
-#     C_pleat_eq = []
-#     C_pleat_neq = []
-#     weights = {'w_underlay_eq': 1e5, 
-#                'w_underlay_neq': 1e2,
-#                'eps_enq': -1e-6,
-#                'w_pleat_eq': 1e5,
-#                'w_pleat_neq': 1e3}
 
 
 # ========================================================================
@@ -354,6 +345,7 @@ class debug_func(Operator):
         dt = bpy.types.Scene.solver_data
         sg = dt.smocked_graph
         sg.plot()
+        sg.plot_embed(dt.embeded_graph)
 
         
         
@@ -471,15 +463,40 @@ class SmockedGraph():
         print('-------------------------------------------------------------------\n')
 
 
+    def plot_embed(self, 
+                   X,
+                   location=(0,-10)):
         
+        construct_object_from_mesh_to_scene(X, [], MESH_NAME_SG_EMBED, COLL_NAME_SG, self.E)
+        mesh = bpy.data.objects[MESH_NAME_SG_EMBED]
+        
+        mesh.scale = (1, 1, 1)
+        mesh.location = (location[0]-min(X[:,0]), location[1]-max(X[:,1])+min(X[:,1])-LAYOUT_Y_SHIFT, 0)
+        mesh.show_axis = False
+        mesh.show_wire = True
+        mesh.display_type = 'WIRE'
+        select_one_object(mesh)
+
+
+        text_loc = (location[0], location[1]-LAYOUT_Y_SHIFT+LAYOUT_TEXT, 0)
+        add_text_to_scene(body="Embedded Smocked Graph", 
+                          location=text_loc, 
+                          scale=(1,1,1),
+                          obj_name='embed_graph_annotation',
+                          coll_name=COLL_NAME_SG)
+        bpy.ops.object.mode_set(mode = 'OBJECT') 
+        for eid in self.eid_underlay:
+            mesh.data.edges[eid].bevel_weight = 0.7
+
+
         
     def plot(self, 
              location=(0,0), 
-             if_show_separate_underlay=True,
-             if_show_separate_pleat=True,
-             if_debug=True):
+             if_show_separate_underlay=False,
+             if_show_separate_pleat=False,
+             if_debug=False):
         initialize_pattern_collection(COLL_NAME_SG, COLL_NAME_SG_SL)        
-        construct_object_from_mesh_to_scene(self.V, self.F, MESH_NAME_SG, COLL_NAME_SG)
+        construct_object_from_mesh_to_scene(self.V, [], MESH_NAME_SG, COLL_NAME_SG, self.E)
         mesh = bpy.data.objects[MESH_NAME_SG]
         
         mesh.scale = (1, 1, 1)
@@ -496,6 +513,12 @@ class SmockedGraph():
                           scale=(1,1,1),
                           obj_name='graph_annotation',
                           coll_name=COLL_NAME_SG)
+        bpy.ops.object.mode_set(mode = 'OBJECT') 
+        for eid in self.eid_underlay:
+            mesh.data.edges[eid].bevel_weight = 0.7
+
+    
+
 
         # visualize the vertices in different colors
         fsp = self.full_smocking_pattern
@@ -3792,9 +3815,6 @@ if __name__ == "__main__":
 
 
 
-
-
-
 # TODO: some bug here - cannot click start twice :/
 #class startAddStitchingLines(Operator):
 #    """initialization for adding stitching lines"""
@@ -4593,3 +4613,17 @@ if __name__ == "__main__":
 #         row.alert=context.scene.if_highlight_button
 #         row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
 #         box.row()
+
+
+
+
+# class OptiData():
+#     C_underlay_eq = []
+#     C_underlay_neq = []
+#     C_pleat_eq = []
+#     C_pleat_neq = []
+#     weights = {'w_underlay_eq': 1e5, 
+#                'w_underlay_neq': 1e2,
+#                'eps_enq': -1e-6,
+#                'w_pleat_eq': 1e5,
+#                'w_pleat_neq': 1e3}
