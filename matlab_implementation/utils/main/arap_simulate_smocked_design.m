@@ -1,4 +1,4 @@
-function [F, U, UV, grid_V, vid] = arap_simulate_smocked_design(SP, SG, X, grid_step, eps_node, margin)
+function [F, U, UV, grid_V, vid, V_new, F_quad] = arap_simulate_smocked_design(SP, SG, X, grid_step, eps_node, margin)
 if nargin < 5, eps_node = 0; end
 
 % [gx, gy]= meshgrid(-2*grid_step:grid_step:SP.len_x+2*grid_step,...

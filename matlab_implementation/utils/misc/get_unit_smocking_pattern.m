@@ -22,7 +22,7 @@ switch lower(type)
             [3,3;4,2],...
             [0,1;1,0],...
             [2,0;3,1]};
-    
+
     case 'zigzag_v2'
         base_x = 8;
         base_y = 2;
@@ -30,18 +30,18 @@ switch lower(type)
             [2,0; 3,1],...
             [4,2; 5,1],...
             [6,1; 7,2]};
-    
+
     case 'zigzag' % zigzag wave
         base_x = 4;
         base_y = 2;
         sewingLines = {[1,0; 0, 1],...
             [2,0; 3,1]};
-        
+
     case 'bone'
         base_x = 2;
         base_y = 2;
         sewingLines = {[0, 0; 1, 1]};
-        
+
     case 'braid' % compared to the basket woven pattern, it has one empty column
         base_x = 3;
         base_y = 2;
@@ -55,7 +55,7 @@ switch lower(type)
             [0,1; 1,0],...
             [3,0; 4,1],...
             [4,2; 5,1]};
-       
+
 
 
     case 'heart'
@@ -63,26 +63,26 @@ switch lower(type)
         base_y = 3;
         sewingLines = {[1,0; 0, 1; 1, 1; 0, 2], ...
             [2,0; 3,1; 2,1; 3, 2]};
-        
-        
+
+
     case 'arrow'
         base_x = 4;
         base_y = 2;
         sewingLines = {[0,0;1,1; 2,0], ...
             [2,1; 3,2;4,1]};
-    
+
     case 'arrow_v2'
         base_x = 4;
         base_y = 3;
         sewingLines = {[0,1; 1,3; 2,2],...
             [2,1; 3,2; 4,0]};
-    
+
     case 'arrow_v3'
         base_x = 6;
         base_y = 2;
         sewingLines = {[0,1; 1,2; 2,1],...
             [3,0; 4,1; 5,0]};
-      
+
     case 'leaf'
         base_x = 6;
         base_y = 2;
@@ -90,7 +90,7 @@ switch lower(type)
             [1,1; 2,0],...
             [3,2; 4,1],...
             [4,0; 5,1]};
-       
+
     case 'box'
         base_x = 4;
         base_y = 6;
@@ -102,14 +102,17 @@ switch lower(type)
             [0,4; 1,5],...
             [2,4; 3,3],...
             [2,5; 3,4]};
-       
+
     case 'twist'
         base_x = 4;
         base_y = 2;
         sewingLines = {[0,0; 1,1; 2,0; 3,1]};
-      
-        
-        
+
+    case 'cross'
+        base_x = 6;
+        base_y = 6;
+        sewingLines = {[1,0; 1,2], [3,1; 5,1], [0,4; 2,4], [4,3; 4,5]};
+
     case 'brick'
         base_x =  8;
         base_y =  8;
@@ -129,13 +132,13 @@ switch lower(type)
             [7,4;6,5;7,6],...
             [7,7;6,6;5,7],...
             [4,7;5,6;4,5]};
-        
+
     case 's1'
         base_x = 2;
         base_y = 2;
         sewingLines = {[0,0; 1,1;], ...
             [0,1; 1,0]};
-    
+
     case 's2'
         base_x = 6;
         base_y = 2;
@@ -147,15 +150,15 @@ switch lower(type)
         base_x = 3;
         base_y = 3;
         sewingLines = {[0,1; 1,0;2,1;1,2], ...
-           }; % [2,3; 3,2]
-    
+            }; % [2,3; 3,2]
+
     case 't2'
         base_x = 2;
         base_y = 2;
         sewingLines = {[0,0;0,1;1,1;1,0]};
-    
+
     case 't3'
-        base_x = 2; 
+        base_x = 2;
         base_y = 2;
         sewingLines = {[0,0; 1,1;],...
             [0,1; 1,0]};
@@ -179,7 +182,7 @@ switch lower(type)
         base_y = 2;
         sewingLines = {[0,0; 1,0],...
             [2,0; 2,1]};
-    
+
     case 't7'
         base_x = 4;
         base_y = 4;
@@ -206,6 +209,34 @@ switch lower(type)
             [1,5;2,4;3,5],...
             [4,4;3,3;4,2],...
             [1,1; 2,2; 3,1]};
+
+
+    case 't11'
+        base_x = 2;
+        base_y = 3;
+        sewingLines = {[0,0; 1,0],...
+            [1,1; 2,2]};
+
+    case 't12'
+        base_x = 3;
+        base_y = 3;
+        sewingLines = {[0,1; 1,2;], ...
+            [1,3; 2,2],...
+            [2,1;3,0]};
+    case 't13'
+        base_x = 5;
+        base_y = 4;
+        sewingLines = {[0,2; 1,2],...
+            [2,2; 3,2],...
+            [4,2;5,2],...
+            [1,3; 1,4],...
+            [2,3; 2,4],...
+            [3,3; 3,4],...
+            [4,3; 4,4],...
+            [1,0; 1,1],...
+            [2,0; 2,1],...
+            [3,0; 3,1],...
+            [4,0; 4,1]}
 
     otherwise
         error('Smocking type not defined!');
