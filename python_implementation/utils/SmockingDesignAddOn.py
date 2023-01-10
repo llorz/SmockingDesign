@@ -3291,6 +3291,9 @@ class SG_draw_graph(Operator):
 
         return {'FINISHED'}
 
+
+
+
 class PrepareCylinderArapOperator(Operator):
   bl_idname = "object.prepare_cylinder_arap_operator"
   bl_label = "Prepare ARAP"
@@ -3353,6 +3356,21 @@ class PrepareArapOperator(Operator):
     smocked_collection.objects.link(obj)
 
     return {'FINISHED'}
+
+
+class MagicButtonOperator(Operator):
+    bl_idname = "objects.magic_button_operator"
+    bl_label = "Simulate"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        bpy.ops.object.sg_embed_graph()
+        bpy.ops.object.prepare_arap_operator()
+        bpy.ops.arap.realtime_operator()
+
+        return {'FINISHED'}
+
+
 
 class SG_embed_graph(Operator):
     bl_idname = "object.sg_embed_graph"
@@ -3925,6 +3943,49 @@ class FULLGRID_PT_import_mesh(FullGrid_panel, bpy.types.Panel):
       row.operator(FSP_Import.bl_idname, text="Import", icon='IMPORT')
       box.row()
 
+
+
+class FastSmock_panel(bpy.types.Panel):
+    bl_label = "Fast Smocking"
+    bl_idname = "SD_PT_fast_smock"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "SmockingDesign"
+    bl_options ={"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False  # No animation.
+
+        layout.label(text= "Load an Existing Pattern")
+        box = layout.box()
+        box.row()
+        box.row().prop(context.scene, 'path_import')
+        row = box.row()
+        row.alert=context.scene.if_highlight_button
+        row.operator(ImportUnitPattern.bl_idname, text="Import", icon='IMPORT')
+        box.row()
+
+
+        layout.label(text= "Tile the Unit Pattern")
+        box = layout.box()
+        box.row()
+        box.row().prop(context.scene,'num_x')
+        box.row().prop(context.scene,'num_y')
+        row = box.row()
+        row.alert=context.scene.if_highlight_button
+        row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
+        box.row()
+
+        row = layout.row()
+        row.alert=context.scene.if_highlight_button
+        row.operator(MagicButtonOperator.bl_idname, text="Simulate the Smocking Pattern", icon='FILE_VOLUME')
+        layout.row()
+
+
+
         
 class SmockedGraph_panel(bpy.types.Panel):
     bl_label = "Smocked Graph"
@@ -4015,7 +4076,7 @@ _classes = [
     CylinderArap,
     # Smocked graph panel.
     SmockedGraph_panel,
-    
+    FastSmock_panel,
     
     USP_CreateGrid,
     USP_SaveCurrentStitchingLine,
@@ -4051,6 +4112,8 @@ _classes = [
     SG_draw_graph,
     SG_embed_graph,
     
+    MagicButtonOperator,
+
     
 
     PrepareArapOperator,
