@@ -118,7 +118,8 @@ PROPS = [
                                    default="U",
                                    name = "Load",  
                                    description = "")),
-    
+    ('if_show_smocked_graph', bpy.props.BoolProperty(name="smocked graph", default=True)),
+    ('if_show_embedded_graph', bpy.props.BoolProperty(name="embedded graph", default=True)),
     
     # for unit grid
     ('base_x', bpy.props.IntProperty(name='X', default=3, min=1, max=20)),
@@ -157,11 +158,11 @@ PROPS = [
                                    description = "")),
     ('radial_grid_ratio', bpy.props.FloatProperty(name='ratio', default=0.9, min=0.1, max=1)), 
     # Embedding
-    ('pleat_eq', bpy.props.FloatProperty(name='Pleats equality constraint weight', default=1e3, min=0.0)), 
-    ('pleat_max_embed', bpy.props.FloatProperty(name='Max embedding weight', default=1, min=0.0)), 
-    ('pleat_variance', bpy.props.FloatProperty(name='Pleat height variance weight', default=1, min=0.0)), 
-    ('arap_constraint_weight', bpy.props.FloatProperty(name='Constraints weight', default=1, min=0.0)), 
-    ('arap_num_iters', bpy.props.IntProperty(name='Num iters', default=100, min=0)), 
+    ('pleat_eq', bpy.props.FloatProperty(name='dij_eq', default=1e3, min=0.0)), 
+    ('pleat_max_embed', bpy.props.FloatProperty(name='max_embed', default=1, min=0.0)), 
+    ('pleat_variance', bpy.props.FloatProperty(name='height_var', default=1, min=0.0)), 
+    ('arap_constraint_weight', bpy.props.FloatProperty(name='contr_weight', default=1, min=0.0)), 
+    ('arap_num_iters', bpy.props.IntProperty(name='num_iter', default=100, min=0)), 
     # Smocked graph
 
     ('graph_select_type', bpy.props.EnumProperty(items= (('V', 'VERT', 'highlight vertices', 'VERTEXSEL', 0),    
@@ -200,7 +201,7 @@ PROPS = [
     ('opti_maxIter', bpy.props.IntProperty(name="MaxIter", default=100, min=1, max=100000)),
     ('opti_if_display', bpy.props.BoolProperty(name="Print convergence messages", default=True))
 
-    
+        
     ]
     
     
@@ -3066,6 +3067,15 @@ class MagicButtonOperator(Operator):
         bpy.ops.object.prepare_arap_operator()
         bpy.ops.arap.realtime_operator()
 
+        dt = bpy.types.Scene.solver_data
+        sg = dt.smocked_graph
+        
+        # TODO: fix the relative position
+        if bpy.context.scene.if_show_smocked_graph:
+            sg.plot()
+        if bpy.context.scene.if_show_embedded_graph:
+            sg.plot_embed(dt.embeded_graph)
+
         return {'FINISHED'}
 
 
@@ -3637,50 +3647,76 @@ class FastSmock_panel(bpy.types.Panel):
 
 
         
-class SmockedGraph_panel(bpy.types.Panel):
-    bl_label = "Smocked Graph"
-    bl_idname = "SD_PT_smocked_graph"
+class Parameter_panel(bpy.types.Panel):
+    bl_label = "Simulation Parameters"
+    bl_idname = "SD_PT_parameter"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "SmockingDesign"
     bl_options ={"DEFAULT_CLOSED"}
    
     def draw(self, context):
+
         layout = self.layout
         layout.use_property_split = True
         layout.use_property_decorate = False  # No animation.
 
-        layout.label(text="Show the Smocked Graph")
-        box = layout.row().box()
-        box.row()
-        box.row().prop(context.scene, "graph_select_type", expand=True)
-        box.row().prop(context.scene, "graph_highlight_type", expand=True)
+        layout.label(text="Pleat Embedding Weights")
+        box = layout.box()
+        box.row().prop(context.scene, 'pleat_eq')
+        box.row().prop(context.scene, 'pleat_max_embed')
+        box.row().prop(context.scene, 'pleat_variance')
+
+
+        layout.label(text="ARAP parameters")
+        box = layout.box()
+        box.row().prop(context.scene, 'arap_constraint_weight')
+        box.row().prop(context.scene, 'arap_num_iters')
+
+
+        layout.label(text="Visualization")
+        box = layout.box()
         row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(SG_draw_graph.bl_idname, text='Visualize the Smocked Graph', icon="GREASEPENCIL")
-        box.row()
+        # TODO: so hacky.... fix the alignment here
+        split = row.split(factor=0.75)
+        col_1 = split.column()
+        col_2 = split.column()
+        col_1.label(text='show smocked graph')
+        col_2.prop(context.scene, 'if_show_smocked_graph', toggle=False, text='')
+        col_1.label(text='show embedded graph')
+        col_2.prop(context.scene, 'if_show_embedded_graph', toggle=False, text='')
+
+        # layout.label(text="Show the Smocked Graph")
+        # box = layout.row().box()
+        # box.row()
+        # box.row().prop(context.scene, "graph_select_type", expand=True)
+        # box.row().prop(context.scene, "graph_highlight_type", expand=True)
+        # row = box.row()
+        # row.alert=context.scene.if_highlight_button
+        # row.operator(SG_draw_graph.bl_idname, text='Visualize the Smocked Graph', icon="GREASEPENCIL")
+        # box.row()
         
         
-        layout.label(text="Embed the Smocked Graph")
-        box = layout.row().box()
-        box.label(text="Optimization Parameters")
-        box.row().prop(context.scene, "opti_init_type", expand=True)
-        box.row().prop(context.scene, "opti_init_pleat_height")
-        box.row().prop(context.scene, "opti_dist_preserve", expand=True)
-        box.row().prop(context.scene, "opti_if_add_delaunay", expand=True)
-        box.row().prop(context.scene, "opti_mtd")
-        box.row().prop(context.scene, "opti_tol", slider=False)
-        box.row().prop(context.scene, "opti_maxIter", slider=False)
-        box.row().prop(context.scene, "opti_if_display")
+        # layout.label(text="Embed the Smocked Graph")
+        # box = layout.row().box()
+        # box.label(text="Optimization Parameters")
+        # box.row().prop(context.scene, "opti_init_type", expand=True)
+        # box.row().prop(context.scene, "opti_init_pleat_height")
+        # box.row().prop(context.scene, "opti_dist_preserve", expand=True)
+        # box.row().prop(context.scene, "opti_if_add_delaunay", expand=True)
+        # box.row().prop(context.scene, "opti_mtd")
+        # box.row().prop(context.scene, "opti_tol", slider=False)
+        # box.row().prop(context.scene, "opti_maxIter", slider=False)
+        # box.row().prop(context.scene, "opti_if_display")
         
 
 
 
 
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(SG_embed_graph.bl_idname, text='Embed the Smocked Graph', icon="GREASEPENCIL")
-        box.row()
+        # row = box.row()
+        # row.alert=context.scene.if_highlight_button
+        # row.operator(SG_embed_graph.bl_idname, text='Embed the Smocked Graph', icon="GREASEPENCIL")
+        # box.row()
         
         
         
@@ -3705,6 +3741,8 @@ _classes = [
     # UI panels.
     FastSmock_panel,
 
+    Parameter_panel,
+
     # Debug.
     debug_panel,
     # Unit grid panel.
@@ -3727,9 +3765,7 @@ _classes = [
     arap_panel,
     ArapGridPanel,
     CylinderArap,
-    # Smocked graph panel.
-    SmockedGraph_panel,
-
+    
     
     USP_CreateGrid,
     USP_SaveCurrentStitchingLine,
