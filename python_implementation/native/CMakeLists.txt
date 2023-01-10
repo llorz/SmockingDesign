@@ -25,7 +25,8 @@ execute_process(COMMAND python3-config --cflags OUTPUT_STRIP_TRAILING_WHITESPACE
 # And the output suffix.
 execute_process(COMMAND python3-config --extension-suffix OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE OUTPUT_SUFFIX)
 
-SET ( CMAKE_CXX_FLAGS "-Xlinker -undefined -Xlinker dynamic_lookup -flto=thin -fPIC ${CMAKE_CXX_FLAGS} ${PYBIND_INCLUDE} ${PYTHON_LD_FLAGS} ${PYTHON_CFLAGS}")
+#-flto=thin
+SET ( CMAKE_CXX_FLAGS "-Xlinker -undefined -Xlinker dynamic_lookup  -fPIC ${CMAKE_CXX_FLAGS} ${PYBIND_INCLUDE} ${PYTHON_LD_FLAGS} ${PYTHON_CFLAGS}")
 
 find_package(Ceres REQUIRED)
 # The proper way to handle warnings (ignore them).

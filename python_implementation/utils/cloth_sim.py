@@ -4,6 +4,7 @@ from bpy.types import Operator
 import numpy as np
 from mathutils import Vector
 import bmesh
+import itertools
 
 def extract_graph_from_meshgrid(gx, gy, if_add_diag=True):
     """extract the mesh/graph from the grid"""
@@ -60,6 +61,8 @@ def get_stitching_lines_in_new_grid(fsp, vid):
 
 def create_cloth_mesh(fsp, sg):
   F, V = get_fine_grid(fsp)
+  F = np.array(list(itertools.chain.from_iterable(\
+      [(f[[0,1,2]], f[[2,3,0]]) for f in F])))
   # Create mesh.
   V3D = np.concatenate((V, np.zeros([V.shape[0], 1])), axis=1)
   mesh = bpy.data.meshes.new("cloth_sim_mesh")
@@ -111,7 +114,7 @@ def add_cloth_sim(obj):
   obj.modifiers['Cloth'].settings.gravity = Vector((0, 0, 0))
   obj.modifiers['Cloth'].collision_settings.use_collision = True
   obj.modifiers['Cloth'].collision_settings.use_self_collision = True
-  obj.modifiers["Cloth"].settings.uniform_pressure_force = 0.4
+  obj.modifiers["Cloth"].settings.uniform_pressure_force = 0.01
   obj.modifiers["Cloth"].settings.sewing_force_max = 0.8
   obj.modifiers["Cloth"].settings.effector_weights.gravity = 0
   obj.modifiers["Cloth"].settings.shrink_min = 0.06

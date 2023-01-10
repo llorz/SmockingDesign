@@ -7,13 +7,14 @@
 #include "SparseAD/include/Dual.h"
 #include "SparseAD/include/Problem.h"
 
-Eigen::MatrixXd std_to_eig(const std::vector<std::vector<double>>& vec) {
+template<typename T>
+Eigen::MatrixX<T> std_to_eig(const std::vector<std::vector<T>>& vec) {
   if (vec.size() == 0) {
-    return Eigen::MatrixXd();
+    return Eigen::MatrixX<T>();
   }
   int m = vec.size();
   int n = vec[0].size();
-  Eigen::MatrixXd result(m, n);
+  Eigen::MatrixX<T> result(m, n);
   for (int i = 0; i < m; i++) {
     for (int j = 0; j < n; j++) {
       result(i, j) = vec[i][j];
@@ -141,8 +142,57 @@ std::vector<std::vector<double>> embed_pleats(
           .current());
 }
 
+Eigen::Matrix2d get_local_frame(const Eigen::MatrixXd& verts,
+const std::vector<int>& face) {
+int v0 = face[0], v1 = face[1], v2 = face[2];
+  const Eigen::Vector3d &e1 = (verts.row(v1) - verts.row(v0)),
+                        e2 = verts.row(v2) - verts.row(v1);
+  const Eigen::Vector3d& e1_rot = e1.cross(e2).cross(e1).normalized();
+
+  Eigen::Matrix2d local_mat;
+  local_mat << e1.norm(), e2.dot(e1) / e1.norm(), 0,
+      e2.cross(e1).norm() / e1.norm();
+  return local_mat;
+}
+
+Eigen::Matrix2d get_jacobian(const Eigen::MatrixXd& verts,
+  const Eigen::MatrixXd& deform_verts,
+  const std::vector<int>& face) {
+    // Create local frame.
+    Eigen::Matrix2d local_frame = get_local_frame(verts, face);
+    Eigen::Matrix2d new_local_frame = get_local_frame(deform_verts, face);
+    return new_local_frame * local_frame.inverse();
+  }
+
+std::vector<double> get_isometry_distortion(
+  const std::vector<std::vector<double>>& grid_verts_vec,
+  const std::vector<std::vector<double>>& deform_verts_vec,
+  const std::vector<std::vector<int>>& faces) {
+    Eigen::MatrixXd grid_verts = std_to_eig(grid_verts_vec);
+    Eigen::MatrixXd deform_verts = std_to_eig(deform_verts_vec);
+
+    std::vector<double> result(grid_verts_vec.size());
+    for (int i = 0 ; i < faces.size(); i++) {
+      Eigen::Matrix2d j = get_jacobian(grid_verts, deform_verts, faces[i]);
+
+      // Sym dirrichlet.
+      // double distortion = (j.squaredNorm() + j.inverse().squaredNorm() - 4);
+      // Singular values should be 1.
+      Eigen::JacobiSVD<Eigen::Matrix2d> svd(j);
+      double distortion = (svd.singularValues().array() - 1).square().sum();
+
+      // Integrate the distortion around the vertices.
+      for (int j = 0; j < 3; j++) {
+        result[faces[i][j]] += distortion / 3;
+      }
+    }
+
+    return result;
+  }
+
 PYBIND11_MODULE(cpp_smocking_solver, m) {
   m.doc() = "Ceres solver for smocking";
   m.def("embed_underlay", &embed_underlay, "Embed underlay graph.");
   m.def("embed_pleats", &embed_pleats, "Embed pleats graph.");
+  m.def("get_isometry_distortion", &get_isometry_distortion, "Get isometry distortion.");
 }

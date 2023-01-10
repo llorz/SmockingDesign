@@ -56,6 +56,9 @@ class ARAP:
         E = E.tocsc()
         self._solver = spla.factorized( ( self._L.T@self._L + self._anc_wgt*E.T@E).tocsc() )
 
+    def get_points(self):
+      return self._pnts
+
     @property
     def n_pnts( self ):
         return self._pnts.shape[1]
@@ -63,6 +66,10 @@ class ARAP:
     @property
     def n_dims( self ):
         return self._pnts.shape[0]
+
+    @property
+    def anchors( self ):
+      return self._anchors
 
     def __call__( self, anchors: Dict[int,Tuple[float,float,float]], num_iters: Optional[int]=4, def_points = None ):
         con_rhs = self._build_constraint_rhs(anchors)
