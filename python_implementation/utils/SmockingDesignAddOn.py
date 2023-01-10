@@ -3380,36 +3380,35 @@ class FULLGRID_PT_main(FullGrid_panel, bpy.types.Panel):
         pass
 
 
-
-        
-class FULLGRID_PT_tile(FullGrid_panel, bpy.types.Panel):
-    bl_label = "Tile Unit Grid"
-    bl_parent_id = 'SD_PT_full_grid_main'
-    bl_options ={"DEFAULT_CLOSED"}
+      
+# class FULLGRID_PT_tile(FullGrid_panel, bpy.types.Panel):
+#     bl_label = "Tile Unit Grid"
+#     bl_parent_id = 'SD_PT_full_grid_main'
+#     bl_options ={"DEFAULT_CLOSED"}
 
     
-    def draw(self, context):
+#     def draw(self, context):
         
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False  # No animation.
+#         layout = self.layout
+#         layout.use_property_split = True
+#         layout.use_property_decorate = False  # No animation.
 
-        box = layout.box()
-        box.row()
-        box.row().prop(context.scene,'num_x')
-        box.row().prop(context.scene,'num_y')
+#         box = layout.box()
+#         box.row()
+#         box.row().prop(context.scene,'num_x')
+#         box.row().prop(context.scene,'num_y')
     
-        box.row().prop(context.scene,'shift_x')
-        box.row().prop(context.scene,'shift_y')
+#         box.row().prop(context.scene,'shift_x')
+#         box.row().prop(context.scene,'shift_y')
         
-        # layout.label(text= "Tiling Type:")
-        # row = layout.row()
-        # row.prop(context.scene, 'type_tile', expand=True)
+#         # layout.label(text= "Tiling Type:")
+#         # row = layout.row()
+#         # row.prop(context.scene, 'type_tile', expand=True)
         
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
-        box.row()
+#         row = box.row()
+#         row.alert=context.scene.if_highlight_button
+#         row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
+#         box.row()
 
 class CreateHextGridPanel(FullGrid_panel, bpy.types.Panel):
     bl_label = "Create honeybomb grid"
@@ -3767,6 +3766,9 @@ class FastSmock_panel(bpy.types.Panel):
             box.row()
             box.row().prop(context.scene,'num_x')
             box.row().prop(context.scene,'num_y')
+            box.row().prop(context.scene,'shift_x')
+            box.row().prop(context.scene,'shift_y')
+
             row = box.row()
             row.alert=context.scene.if_highlight_button
             row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
@@ -3866,7 +3868,9 @@ _classes = [
 
     # Full smocking pattern panel.
     FULLGRID_PT_main,
-    FULLGRID_PT_tile,
+    
+    # FULLGRID_PT_tile,
+    
     CreateHextGridPanel,
     FULLGRID_PT_combine_patterns,
     FULLGRID_PT_edit_pattern,
