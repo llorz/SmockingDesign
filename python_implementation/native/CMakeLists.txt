@@ -28,21 +28,16 @@ execute_process(COMMAND python3-config --extension-suffix OUTPUT_STRIP_TRAILING_
 #-flto=thin
 SET ( CMAKE_CXX_FLAGS "-Xlinker -undefined -Xlinker dynamic_lookup  -fPIC ${CMAKE_CXX_FLAGS} ${PYBIND_INCLUDE} ${PYTHON_LD_FLAGS} ${PYTHON_CFLAGS}")
 
-find_package(Ceres REQUIRED)
 # The proper way to handle warnings (ignore them).
 add_definitions(-w)
 
 # Cmake fails to properly add the libraries... add them manually.
-target_include_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/ceres-solver/2.1.0_1/include/")
-target_include_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/glog/0.6.0/include/")
-target_include_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/gflags/2.2.2/include/")
-target_include_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/libomp/15.0.6/include")
-target_link_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/ceres-solver/2.1.0_1/lib/")
-target_link_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/glog/0.6.0/lib")
-target_link_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/gflags/2.2.2/lib")
-target_link_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/libomp/15.0.6/lib")
+find_package(OpenMP REQUIRED)
+find_package(Eigen3 REQUIRED NO_MODULE)
+# target_include_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/libomp/15.0.6/include")
+# target_link_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/libomp/15.0.6/lib")
 
-target_link_libraries(${PROJECT_NAME} PRIVATE ceres glog gflags omp)
+target_link_libraries(${PROJECT_NAME} PRIVATE OpenMP::OpenMP_CXX Eigen3::Eigen)
 set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "cpp_smocking_solver")
 set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ${OUTPUT_SUFFIX})
