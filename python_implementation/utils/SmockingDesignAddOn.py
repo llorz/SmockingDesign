@@ -1,6 +1,6 @@
 bl_info = {
     "name": "SmockingDesign",
-    "author": "Jing Ren",
+    "author": "Jing Ren, Aviv Segall",
     "version": (1, 0),
     "blender": (2, 80, 0),
     "location": "View3D > N",
@@ -351,168 +351,12 @@ class debug_func(Operator):
         current_time = now.strftime("%H:%M:%S")
         print("Debugging....Current Time =", current_time)
 
-
-        
-        initialize_collections()
-        initialize_data()
-
-    
-        context.scene.path_import = '/Users/avivsegall/projs/SmockingDesign/unit_smocking_patterns/braid.usp'
-        bpy.ops.object.import_unit_pattern()
-
-        bpy.context.scene.num_x = 5
-        bpy.context.scene.num_y = 5
-                
-        bpy.ops.object.create_full_smocking_pattern()
-
-        
-        bpy.ops.object.sg_draw_graph()
-
-
         dt = bpy.types.Scene.solver_data
-
-
-        fsp = dt.full_smocking_pattern
         sg = dt.smocked_graph
-    
-        C_underlay_eq, C_pleat_eq = sg.return_distance_constraint()
-
-
-        #----------------- embed the underlay 
-        X_underlay_ini = sg.V[sg.vid_underlay, 0:2]    
-
-    
-        x0 = X_underlay_ini.flatten()
-        
-        start_time = time.time()
-        res_underlay = np.array(cpp_smocking_solver.embed_underlay(X_underlay_ini, C_underlay_eq))
-        '''
-        res_underlay = minimize(opti_energy_sg_underlay, 
-                           x0, 
-                           method='Nelder-Mead',
-                           args=(C_underlay_eq), 
-                           options=opti_get_NelderMead_solver_options())
-        '''
-        msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
-        bpy.types.Scene.sl_props.runtime_log.append(msg)
-
-        X = res_underlay.reshape(int(len(res_underlay)),2)
-
-        X_underlay = np.concatenate((X, np.zeros((len(X),1))), axis=1)
-
-        #------------------ embed the pleat
-        X_pleat = sg.V[sg.vid_pleat, 0:2]
-
-        # option 01: initialize from the original position 
-        X_pleat = np.concatenate((X_pleat, np.ones((len(X_pleat),1))), axis=1)
-        
-        x0 = X_pleat.flatten()
-        w_pleat_embed = 1
-        w_pleat_eq = 1e3
-        w_pleat_var = 1
-        start_time = time.time()
-        res_pleat = np.array(cpp_smocking_solver.embed_pleats(
-          X_underlay, X_pleat, C_pleat_eq, w_pleat_var, w_pleat_embed, w_pleat_eq))
-        '''
-        res_pleat = minimize(opti_energy_sg_pleat, 
-                           x0, 
-                           method='Nelder-Mead',
-                           args=(X_underlay, C_pleat_eq, w_pleat_embed, w_pleat_eq, w_pleat_var), 
-                           options=opti_get_NelderMead_solver_options())
-        '''
-        msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
-        bpy.types.Scene.sl_props.runtime_log.append(msg)
-
-        X_pleat = res_pleat.reshape(int(len(res_pleat)), 3)
-
-
-
-        X_all = np.concatenate((X_underlay, X_pleat), axis=0)
-
-        print_runtime()
-
-        # Run arap.
-        g_arap, g_constraints, g_F, UV = prepare_arap(X_all, fsp, sg)
-        g_V = g_arap(g_constraints, 0)
-        g_iters = 100
-
-        # Show the result.
-        smocked_mesh = bpy.data.meshes.new("Smocked")
-        smocked_mesh.from_pydata(g_V.T,[],g_F)
-        
-        smocked_mesh.update()
-        g_mesh = smocked_mesh
-        dt.arap_data = [g_V, g_F, g_mesh, g_iters, g_arap, g_constraints]
-
-        # Add uv layer
-        uvlayer = smocked_mesh.uv_layers.new()
-        for face in smocked_mesh.polygons:
-          for vert_idx, loop_idx in zip(face.vertices, face.loop_indices):
-              uvlayer.data[loop_idx].uv = (UV[vert_idx, 0] / 20.0, UV[vert_idx, 1] / 20.0)
-        
-        obj = bpy.data.objects.new('Smocked mesh', smocked_mesh)
-        obj.location = (0, 0, 4)
-        obj.data.materials.append(bpy.data.materials['Fabric035'])
-        for f in obj.data.polygons:
-          f.use_smooth = True
-        smocked_collection = bpy.data.collections.new('smocked_collection')
-        bpy.context.scene.collection.children.link(smocked_collection)
-        smocked_collection.objects.link(obj)
-
-        # add_text_to_scene(body="Simulated Smocked Mesh", 
-        #                   location=(0, -32, 0), 
-        #                   scale=(1,1,1),
-        #                   obj_name='grid_annotation',
-        #                   coll_name=COLL_NAME_USP)
-
-
-        # trans = [0,-30, 0]
-        # for eid in range(sg.ne):
-        #     vtxID = sg.E[eid, :]
-        #     pos = X_all[vtxID, :] + trans
-        #     if sg.is_edge_underlay(eid):
-        #         col = col_gray
-        #     else:
-        #         col = col_red
-        #     draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
-        
-
-
-        # X = X_underlay
-        # trans = [0,-20, 0]
-        # for eid in sg.eid_underlay:
-        #     vtxID = sg.E[eid, :]
-        #     pos = X[vtxID, :] + trans
-        #     draw_stitching_line(pos, col_red, "embed_underlay2_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
-
-
-        '''
-        #----------------- plot the embeded graph
-        
-        
-        
-
-        for vid in range(len(X)):
-            pos = X[vid, :] + trans
-            add_text_to_scene(body='v'+str(vid), 
-                              location=tuple(pos), 
-                              scale=(1,1,1),
-                              obj_name='v'+str(vid),
-                              coll_name=COLL_NAME_SG)
+        sg.plot()
 
         
-        # X = X_underlay
-        trans = [0,-30, 0]
-        for eid in range(sg.ne):
-            vtxID = sg.E[eid, :]
-            pos = X_all[vtxID, :] + trans
-            if sg.is_edge_underlay(eid):
-                col = col_gray
-            else:
-                col = col_red
-            draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
         
-        '''
         return {'FINISHED'}
 
 
@@ -1959,7 +1803,11 @@ def construct_object_from_mesh_to_scene(V, F, mesh_name, coll_name=COLL_NAME_FSP
     
     # create mesh in blender
     mesh = bpy.data.meshes.new(mesh_name)
-    mesh.from_pydata(verts, E, faces)
+    if faces == []: # for hexagon pattern
+        mesh.from_pydata(verts, E, faces) 
+    else: # for regular pattern, so we do not show the diagonal edges
+        mesh.from_pydata(verts, [], faces) 
+
     mesh.update(calc_edges=False) # we use our own edgeID
     object = bpy.data.objects.new(mesh_name, mesh)
     # link the object to the scene
@@ -2498,6 +2346,8 @@ class HoneycombGrid(Operator):
 
     fsp.plot(fsp_loc)
     return {'FINISHED'}
+
+
 
 class FSP_Tile(Operator):
     """Generate the full smokcing pattern by tiling the specified unit pattern"""
@@ -3380,35 +3230,6 @@ class FULLGRID_PT_main(FullGrid_panel, bpy.types.Panel):
         pass
 
 
-      
-# class FULLGRID_PT_tile(FullGrid_panel, bpy.types.Panel):
-#     bl_label = "Tile Unit Grid"
-#     bl_parent_id = 'SD_PT_full_grid_main'
-#     bl_options ={"DEFAULT_CLOSED"}
-
-    
-#     def draw(self, context):
-        
-#         layout = self.layout
-#         layout.use_property_split = True
-#         layout.use_property_decorate = False  # No animation.
-
-#         box = layout.box()
-#         box.row()
-#         box.row().prop(context.scene,'num_x')
-#         box.row().prop(context.scene,'num_y')
-    
-#         box.row().prop(context.scene,'shift_x')
-#         box.row().prop(context.scene,'shift_y')
-        
-#         # layout.label(text= "Tiling Type:")
-#         # row = layout.row()
-#         # row.prop(context.scene, 'type_tile', expand=True)
-        
-#         row = box.row()
-#         row.alert=context.scene.if_highlight_button
-#         row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
-#         box.row()
 
 class CreateHextGridPanel(FullGrid_panel, bpy.types.Panel):
     bl_label = "Create honeybomb grid"
@@ -4575,3 +4396,200 @@ if __name__ == "__main__":
 
 
 
+
+        # initialize_collections()
+        # initialize_data()
+
+    
+        # context.scene.path_import = '/Users/avivsegall/projs/SmockingDesign/unit_smocking_patterns/braid.usp'
+        # bpy.ops.object.import_unit_pattern()
+
+        # bpy.context.scene.num_x = 5
+        # bpy.context.scene.num_y = 5
+                
+        # bpy.ops.object.create_full_smocking_pattern()
+
+        
+        # bpy.ops.object.sg_draw_graph()
+
+
+        # dt = bpy.types.Scene.solver_data
+
+
+        # fsp = dt.full_smocking_pattern
+        # sg = dt.smocked_graph
+    
+        # C_underlay_eq, C_pleat_eq = sg.return_distance_constraint()
+
+
+        # #----------------- embed the underlay 
+        # X_underlay_ini = sg.V[sg.vid_underlay, 0:2]    
+
+    
+        # x0 = X_underlay_ini.flatten()
+        
+        # start_time = time.time()
+        # res_underlay = np.array(cpp_smocking_solver.embed_underlay(X_underlay_ini, C_underlay_eq))
+        # '''
+        # res_underlay = minimize(opti_energy_sg_underlay, 
+        #                    x0, 
+        #                    method='Nelder-Mead',
+        #                    args=(C_underlay_eq), 
+        #                    options=opti_get_NelderMead_solver_options())
+        # '''
+        # msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
+        # bpy.types.Scene.sl_props.runtime_log.append(msg)
+
+        # X = res_underlay.reshape(int(len(res_underlay)),2)
+
+        # X_underlay = np.concatenate((X, np.zeros((len(X),1))), axis=1)
+
+        # #------------------ embed the pleat
+        # X_pleat = sg.V[sg.vid_pleat, 0:2]
+
+        # # option 01: initialize from the original position 
+        # X_pleat = np.concatenate((X_pleat, np.ones((len(X_pleat),1))), axis=1)
+        
+        # x0 = X_pleat.flatten()
+        # w_pleat_embed = 1
+        # w_pleat_eq = 1e3
+        # w_pleat_var = 1
+        # start_time = time.time()
+        # res_pleat = np.array(cpp_smocking_solver.embed_pleats(
+        #   X_underlay, X_pleat, C_pleat_eq, w_pleat_var, w_pleat_embed, w_pleat_eq))
+        # '''
+        # res_pleat = minimize(opti_energy_sg_pleat, 
+        #                    x0, 
+        #                    method='Nelder-Mead',
+        #                    args=(X_underlay, C_pleat_eq, w_pleat_embed, w_pleat_eq, w_pleat_var), 
+        #                    options=opti_get_NelderMead_solver_options())
+        # '''
+        # msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
+        # bpy.types.Scene.sl_props.runtime_log.append(msg)
+
+        # X_pleat = res_pleat.reshape(int(len(res_pleat)), 3)
+
+
+
+        # X_all = np.concatenate((X_underlay, X_pleat), axis=0)
+
+        # print_runtime()
+
+        # # Run arap.
+        # g_arap, g_constraints, g_F, UV = prepare_arap(X_all, fsp, sg)
+        # g_V = g_arap(g_constraints, 0)
+        # g_iters = 100
+
+        # # Show the result.
+        # smocked_mesh = bpy.data.meshes.new("Smocked")
+        # smocked_mesh.from_pydata(g_V.T,[],g_F)
+        
+        # smocked_mesh.update()
+        # g_mesh = smocked_mesh
+        # dt.arap_data = [g_V, g_F, g_mesh, g_iters, g_arap, g_constraints]
+
+        # # Add uv layer
+        # uvlayer = smocked_mesh.uv_layers.new()
+        # for face in smocked_mesh.polygons:
+        #   for vert_idx, loop_idx in zip(face.vertices, face.loop_indices):
+        #       uvlayer.data[loop_idx].uv = (UV[vert_idx, 0] / 20.0, UV[vert_idx, 1] / 20.0)
+        
+        # obj = bpy.data.objects.new('Smocked mesh', smocked_mesh)
+        # obj.location = (0, 0, 4)
+        # obj.data.materials.append(bpy.data.materials['Fabric035'])
+        # for f in obj.data.polygons:
+        #   f.use_smooth = True
+        # smocked_collection = bpy.data.collections.new('smocked_collection')
+        # bpy.context.scene.collection.children.link(smocked_collection)
+        # smocked_collection.objects.link(obj)
+
+        # # add_text_to_scene(body="Simulated Smocked Mesh", 
+        # #                   location=(0, -32, 0), 
+        # #                   scale=(1,1,1),
+        # #                   obj_name='grid_annotation',
+        # #                   coll_name=COLL_NAME_USP)
+
+
+        # # trans = [0,-30, 0]
+        # # for eid in range(sg.ne):
+        # #     vtxID = sg.E[eid, :]
+        # #     pos = X_all[vtxID, :] + trans
+        # #     if sg.is_edge_underlay(eid):
+        # #         col = col_gray
+        # #     else:
+        # #         col = col_red
+        # #     draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+        
+
+
+        # # X = X_underlay
+        # # trans = [0,-20, 0]
+        # # for eid in sg.eid_underlay:
+        # #     vtxID = sg.E[eid, :]
+        # #     pos = X[vtxID, :] + trans
+        # #     draw_stitching_line(pos, col_red, "embed_underlay2_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+
+
+        # '''
+        # #----------------- plot the embeded graph
+        
+        
+        
+
+        # for vid in range(len(X)):
+        #     pos = X[vid, :] + trans
+        #     add_text_to_scene(body='v'+str(vid), 
+        #                       location=tuple(pos), 
+        #                       scale=(1,1,1),
+        #                       obj_name='v'+str(vid),
+        #                       coll_name=COLL_NAME_SG)
+
+        
+        # # X = X_underlay
+        # trans = [0,-30, 0]
+        # for eid in range(sg.ne):
+        #     vtxID = sg.E[eid, :]
+        #     pos = X_all[vtxID, :] + trans
+        #     if sg.is_edge_underlay(eid):
+        #         col = col_gray
+        #     else:
+        #         col = col_red
+        #     draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+        
+        # '''
+
+
+
+
+
+
+
+      
+# class FULLGRID_PT_tile(FullGrid_panel, bpy.types.Panel):
+#     bl_label = "Tile Unit Grid"
+#     bl_parent_id = 'SD_PT_full_grid_main'
+#     bl_options ={"DEFAULT_CLOSED"}
+
+    
+#     def draw(self, context):
+        
+#         layout = self.layout
+#         layout.use_property_split = True
+#         layout.use_property_decorate = False  # No animation.
+
+#         box = layout.box()
+#         box.row()
+#         box.row().prop(context.scene,'num_x')
+#         box.row().prop(context.scene,'num_y')
+    
+#         box.row().prop(context.scene,'shift_x')
+#         box.row().prop(context.scene,'shift_y')
+        
+#         # layout.label(text= "Tiling Type:")
+#         # row = layout.row()
+#         # row.prop(context.scene, 'type_tile', expand=True)
+        
+#         row = box.row()
+#         row.alert=context.scene.if_highlight_button
+#         row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
+#         box.row()
