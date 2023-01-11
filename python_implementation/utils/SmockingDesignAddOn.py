@@ -1,6 +1,6 @@
 bl_info = {
     "name": "SmockingDesign",
-    "author": "Jing Ren",
+    "author": "Jing Ren, Aviv Segall",
     "version": (1, 0),
     "blender": (2, 80, 0),
     "location": "View3D > N",
@@ -96,7 +96,8 @@ COLL_NAME_FSP_TMP_SL = "FSP_tmp_SL"
 
 COLL_NAME_SG = "SmockedGraph"
 COLL_NAME_SG_SL = "SmockedGraphStrokes"
-MESH_NAME_SG = "Graph"
+MESH_NAME_SG = "SmockedGraph"
+MESH_NAME_SG_EMBED = "SmockedGraphEmbedded"
 
 MESH_NAME_USP = "Grid"
 MESH_NAME_FSP = "FullPattern"
@@ -108,27 +109,38 @@ MESH_NAME_P2 = 'Pattern02'
 # global variables from user input
 
 PROPS = [
+    
     ('if_highlight_button', bpy.props.BoolProperty(name="highlight buttons", default=True)),
+
+    # fast smocking
+    ('path_import', bpy.props.StringProperty(subtype='FILE_PATH', name='File')),
+    ('path_import_fullpattern', bpy.props.StringProperty(subtype='FILE_PATH', name='File', default='/tmp/my_pattern_name.obj')),
+    ('fastsmock_select', bpy.props.EnumProperty(items= (('U', 'UnitPattern', 'load existing unit pattern', 'EVENT_U', 0),    
+                                                        ('F', 'FullPattern', 'load existing full pattern', 'EVENT_F', 1)) ,  
+                                   default="U",
+                                   name = "Load",  
+                                   description = "")),
+    ('if_show_smocked_graph', bpy.props.BoolProperty(name="smocked graph", default=True)),
+    ('if_show_embedded_graph', bpy.props.BoolProperty(name="embedded graph", default=True)),
+    
     # for unit grid
     ('base_x', bpy.props.IntProperty(name='X', default=3, min=1, max=20)),
     ('base_y', bpy.props.IntProperty(name='Y', default=3, min=1, max=20)),
     # import/export stitching lines
     ('path_export', bpy.props.StringProperty(subtype='DIR_PATH', name='Path',default='/tmp/')),
     ('filename_export', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
-    ('path_import', bpy.props.StringProperty(subtype='FILE_PATH', name='File')),
     # for full grid (full smocking pattern)
-    ('num_x', bpy.props.IntProperty(name='Repeat along X-axis', default=3, min=1, max=20)),
-    ('num_y', bpy.props.IntProperty(name='Repeat along Y-axis', default=3, min=1, max=20)),
-    ('shift_x', bpy.props.IntProperty(name='Shift along X-axis', default=0, min=-10, max=10)),
-    ('shift_y', bpy.props.IntProperty(name='Shift along Y-axis', default=0, min=-10, max=10)),
+    ('num_x', bpy.props.IntProperty(name='X: repeat', default=3, min=1, max=20)),
+    ('num_y', bpy.props.IntProperty(name='Y: repeat', default=3, min=1, max=20)),
+    ('shift_x', bpy.props.IntProperty(name='X: shift', default=0, min=-10, max=10)),
+    ('shift_y', bpy.props.IntProperty(name='Y: shift', default=0, min=-10, max=10)),
 #    ('type_tile', bpy.props.EnumProperty(items = [("regular", "regular", "tile in a regular grid"), ("radial", "radial", "tile in a radial grid")], name="Type", default="regular")),
     ('margin_top', bpy.props.FloatProperty(name='Top', default=0, min=0, max=10)),
     ('margin_bottom', bpy.props.FloatProperty(name='Bottom', default=0, min=0, max=10)),
     ('margin_left', bpy.props.FloatProperty(name='Left', default=0, min=0, max=10)),
     ('margin_right', bpy.props.FloatProperty(name='Right', default=0, min=0, max=10)),
     # export the full smocking pattern as obj
-    ('path_export_fullpattern', bpy.props.StringProperty(subtype='FILE_PATH', name='Path', default='/tmp/')),
-    ('path_import_fullpattern', bpy.props.StringProperty(subtype='FILE_PATH', name='Path', default='/tmp/my_pattern_name.obj')),
+    ('path_export_fullpattern', bpy.props.StringProperty(subtype='DIR_PATH', name='Path', default='/tmp/')),
     ('filename_export_fullpattern', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
     ('export_format', bpy.props.EnumProperty(items = [(".obj", "OBJ", ".obj"), (".off", "OFF", ".off")], name="Format", default=".obj")),
     # FSP: combine two patterns
@@ -139,6 +151,7 @@ PROPS = [
                                                           name="Combine", default="x")),
     ('combine_space', bpy.props.IntProperty(name='Spacing', default=2, min=1, max=20)),
     ('combine_shift', bpy.props.IntProperty(name='Shift', default=0, min=-20, max=20)),
+    
     ('fsp_edit_selection', bpy.props.EnumProperty(items= (('V', 'VERT', 'move vertices', 'VERTEXSEL', 0),    
                                                           ('E', 'EDGE', 'move edges', 'EDGESEL', 1),    
                                                           ('F', 'FACE', 'add/delete faces', 'FACESEL', 2)) ,  
@@ -147,50 +160,14 @@ PROPS = [
                                    description = "")),
     ('radial_grid_ratio', bpy.props.FloatProperty(name='ratio', default=0.9, min=0.1, max=1)), 
     # Embedding
-    ('pleat_eq', bpy.props.FloatProperty(name='Pleats equality constraint weight', default=1e3, min=0.0)), 
-    ('pleat_max_embed', bpy.props.FloatProperty(name='Max embedding weight', default=1, min=0.0)), 
-    ('pleat_variance', bpy.props.FloatProperty(name='Pleat height variance weight', default=1, min=0.0)), 
-    ('arap_constraint_weight', bpy.props.FloatProperty(name='Constraints weight', default=1, min=0.0)), 
-    ('arap_num_iters', bpy.props.IntProperty(name='Num iters', default=100, min=0)), 
-    # Smocked graph
+    ('pleat_eq', bpy.props.FloatProperty(name='dij_eq', default=1e3, min=0.0)), 
+    ('pleat_max_embed', bpy.props.FloatProperty(name='max_embed', default=1, min=0.0)), 
+    ('pleat_variance', bpy.props.FloatProperty(name='height_var', default=1, min=0.0)), 
+    ('arap_constraint_weight', bpy.props.FloatProperty(name='contr_weight', default=1, min=0.0)), 
+    ('arap_num_iters', bpy.props.IntProperty(name='num_iter', default=100, min=0))
 
-    ('graph_select_type', bpy.props.EnumProperty(items= (('V', 'VERT', 'highlight vertices', 'VERTEXSEL', 0),    
-                                                          ('E', 'EDGE', 'highlight edges', 'EDGESEL', 1)),    
-                                   default="V",
-                                   name = "Select",  
-                                   description = "")),
-    ('graph_highlight_type', bpy.props.EnumProperty(items= (('all', 'all', 'show all vtx/edge'),
-                                                      ('underlay', 'underlay', 'highlight underlay'),    
-                                                      ('pleat', 'pleat', 'hightlight pleat')) ,  
-                                   default="all",
-                                   name = "Highlight",  
-                                   description = "")),
-    ('opti_init_type', bpy.props.EnumProperty(items= (('center', 'center', 'center of stitching lines'),    
-                                                      ('random', 'random', 'random initialization')) ,  
-                                   default="center",
-                                   name = "Initialization",  
-                                   description = "Initialization")),
-    ('opti_init_pleat_height', bpy.props.FloatProperty(name="Initial Pleat Height", default=1, min=0.1, max=5)),
-    
-    ('opti_dist_preserve', bpy.props.EnumProperty(items= (('exact', 'exact', 'exact'),    
-                                                      ('approx', 'approximation', 'approximation')) ,  
-                                   default="exact",
-                                   name = "Constraints",  
-                                   description = "Constraints")),
 
-    ('opti_if_add_delaunay', bpy.props.BoolProperty(name="Add Constraints from Delaunay", default=False)),
-
-    ('opti_mtd', bpy.props.EnumProperty(items= (('Newton', 'Newton-CG', 'Newton Conjugated Gradient'),    
-                                                ('BFGS', 'BFGS', 'BFGS')) ,  
-                                   default="Newton",
-                                   name = "Solver",  
-                                   description = "Solver")),
-
-    ('opti_tol', bpy.props.FloatProperty(name="Tolerance", default=1e-3, min=1e-12, max=0.1)),
-    ('opti_maxIter', bpy.props.IntProperty(name="MaxIter", default=100, min=1, max=100000)),
-    ('opti_if_display', bpy.props.BoolProperty(name="Print convergence messages", default=True))
-
-    
+        
     ]
     
     
@@ -224,16 +201,6 @@ class SolverData():
 
 
 
-class OptiData():
-    C_underlay_eq = []
-    C_underlay_neq = []
-    C_pleat_eq = []
-    C_pleat_neq = []
-    weights = {'w_underlay_eq': 1e5, 
-               'w_underlay_neq': 1e2,
-               'eps_enq': -1e-6,
-               'w_pleat_eq': 1e5,
-               'w_pleat_neq': 1e3}
 
 
 # ========================================================================
@@ -330,50 +297,7 @@ class debug_print(Operator):
                 
         return {'FINISHED'}
 
-def opti_energy_maximize_embedding(X):
-    D = squareform(pdist(X,'euclidean'))  
-    fval = -np.sum(np.sum(D))
-    return fval
 
-
-def opti_energy_pleat_height_varicance(X_pleat):
-    fval = np.var(X_pleat[:,2])
-    return fval
-
-
-def opti_energy_preserve_edge_length(X, C_eq):
-    I = C_eq[:,0].astype(int)
-    J = C_eq[:,1].astype(int)
-    d_eq = np.sqrt(np.sum(np.power(X[I, :] - X[J, :], 2),axis = 1))
-    fval = sum(np.power(d_eq - C_eq[:,2], 2))
-    return fval
-
-
-
-def opti_energy_sg_underlay(x_in, C_eq):
-    # energy to embedding the underaly graph of the smocked graph
-    X = x_in.reshape(int(len(x_in)/2), 2) # x_in the flattened xy-coordinates of the underaly graph
-    return opti_energy_preserve_edge_length(X, C_eq)
-
-
-def opti_energy_sg_pleat(x_pleat_in, 
-                         X_underlay, 
-                         C_pleat_eq,
-                         w_embed=1,
-                         w_eq=1e4,
-                         w_var = 1):
-    if len(X_underlay[0]) == 2:    
-        X_underlay = np.concatenate((X_underlay, np.zeros((len(X_underlay),1))), axis=1)
-
-    X_pleat = x_pleat_in.reshape(int(len(x_pleat_in)/3), 3)
-
-    X = np.concatenate((X_underlay, X_pleat), axis = 0)
-
-    fval = w_embed*opti_energy_maximize_embedding(X) +\
-           w_eq*opti_energy_preserve_edge_length(X, C_pleat_eq) +\
-           w_var*opti_energy_pleat_height_varicance(X_pleat)
-
-    return fval
 
 
 class debug_func(Operator):
@@ -385,316 +309,16 @@ class debug_func(Operator):
         current_time = now.strftime("%H:%M:%S")
         print("Debugging....Current Time =", current_time)
 
-
-        
-        initialize_collections()
-        initialize_data()
-
-    
-        context.scene.path_import = '/Users/avivsegall/projs/SmockingDesign/unit_smocking_patterns/braid.usp'
-        bpy.ops.object.import_unit_pattern()
-
-        bpy.context.scene.num_x = 5
-        bpy.context.scene.num_y = 5
-                
-        bpy.ops.object.create_full_smocking_pattern()
-
-        
-        bpy.ops.object.sg_draw_graph()
-
-
         dt = bpy.types.Scene.solver_data
-
-
-        fsp = dt.full_smocking_pattern
         sg = dt.smocked_graph
-    
-        C_underlay_eq, C_pleat_eq = sg.return_distance_constraint()
-
-
-        #----------------- embed the underlay 
-        X_underlay_ini = sg.V[sg.vid_underlay, 0:2]    
-
-    
-        x0 = X_underlay_ini.flatten()
-        
-        start_time = time.time()
-        res_underlay = np.array(cpp_smocking_solver.embed_underlay(X_underlay_ini, C_underlay_eq))
-        '''
-        res_underlay = minimize(opti_energy_sg_underlay, 
-                           x0, 
-                           method='Nelder-Mead',
-                           args=(C_underlay_eq), 
-                           options=opti_get_NelderMead_solver_options())
-        '''
-        msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
-        bpy.types.Scene.sl_props.runtime_log.append(msg)
-
-        X = res_underlay.reshape(int(len(res_underlay)),2)
-
-        X_underlay = np.concatenate((X, np.zeros((len(X),1))), axis=1)
-
-        #------------------ embed the pleat
-        X_pleat = sg.V[sg.vid_pleat, 0:2]
-
-        # option 01: initialize from the original position 
-        X_pleat = np.concatenate((X_pleat, np.ones((len(X_pleat),1))), axis=1)
-        
-        x0 = X_pleat.flatten()
-        w_pleat_embed = 1
-        w_pleat_eq = 1e3
-        w_pleat_var = 1
-        start_time = time.time()
-        res_pleat = np.array(cpp_smocking_solver.embed_pleats(
-          X_underlay, X_pleat, C_pleat_eq, w_pleat_var, w_pleat_embed, w_pleat_eq))
-        '''
-        res_pleat = minimize(opti_energy_sg_pleat, 
-                           x0, 
-                           method='Nelder-Mead',
-                           args=(X_underlay, C_pleat_eq, w_pleat_embed, w_pleat_eq, w_pleat_var), 
-                           options=opti_get_NelderMead_solver_options())
-        '''
-        msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
-        bpy.types.Scene.sl_props.runtime_log.append(msg)
-
-        X_pleat = res_pleat.reshape(int(len(res_pleat)), 3)
-
-
-
-        X_all = np.concatenate((X_underlay, X_pleat), axis=0)
-
-        print_runtime()
-
-        # Run arap.
-        g_arap, g_constraints, g_F, UV = prepare_arap(X_all, fsp, sg)
-        g_V = g_arap(g_constraints, 0)
-        g_iters = 100
-
-        # Show the result.
-        smocked_mesh = bpy.data.meshes.new("Smocked")
-        smocked_mesh.from_pydata(g_V.T,[],g_F)
-        
-        smocked_mesh.update()
-        g_mesh = smocked_mesh
-        dt.arap_data = [g_V, g_F, g_mesh, g_iters, g_arap, g_constraints]
-
-        # Add uv layer
-        uvlayer = smocked_mesh.uv_layers.new()
-        for face in smocked_mesh.polygons:
-          for vert_idx, loop_idx in zip(face.vertices, face.loop_indices):
-              uvlayer.data[loop_idx].uv = (UV[vert_idx, 0] / 20.0, UV[vert_idx, 1] / 20.0)
-        
-        obj = bpy.data.objects.new('Smocked mesh', smocked_mesh)
-        obj.location = (0, 0, 4)
-        obj.data.materials.append(bpy.data.materials['Fabric035'])
-        for f in obj.data.polygons:
-          f.use_smooth = True
-        smocked_collection = bpy.data.collections.new('smocked_collection')
-        bpy.context.scene.collection.children.link(smocked_collection)
-        smocked_collection.objects.link(obj)
-
-        # add_text_to_scene(body="Simulated Smocked Mesh", 
-        #                   location=(0, -32, 0), 
-        #                   scale=(1,1,1),
-        #                   obj_name='grid_annotation',
-        #                   coll_name=COLL_NAME_USP)
-
-
-        # trans = [0,-30, 0]
-        # for eid in range(sg.ne):
-        #     vtxID = sg.E[eid, :]
-        #     pos = X_all[vtxID, :] + trans
-        #     if sg.is_edge_underlay(eid):
-        #         col = col_gray
-        #     else:
-        #         col = col_red
-        #     draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
-        
-
-
-        # X = X_underlay
-        # trans = [0,-20, 0]
-        # for eid in sg.eid_underlay:
-        #     vtxID = sg.E[eid, :]
-        #     pos = X[vtxID, :] + trans
-        #     draw_stitching_line(pos, col_red, "embed_underlay2_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
-
-
-        '''
-        #----------------- plot the embeded graph
-        
-        
-        
-
-        for vid in range(len(X)):
-            pos = X[vid, :] + trans
-            add_text_to_scene(body='v'+str(vid), 
-                              location=tuple(pos), 
-                              scale=(1,1,1),
-                              obj_name='v'+str(vid),
-                              coll_name=COLL_NAME_SG)
+        sg.plot()
+        sg.plot_embed(dt.embeded_graph)
 
         
-        # X = X_underlay
-        trans = [0,-30, 0]
-        for eid in range(sg.ne):
-            vtxID = sg.E[eid, :]
-            pos = X_all[vtxID, :] + trans
-            if sg.is_edge_underlay(eid):
-                col = col_gray
-            else:
-                col = col_red
-            draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
         
-        '''
         return {'FINISHED'}
 
 
-def opti_energy_sg_pleat_old(x_pleat_in,
-                         X_underlay,
-                         C_pleat_neq, 
-                         w_pleat_neq=1e6, 
-                         w_var = 1e1,
-                         eps_neq=-1e-3,
-                         if_return_all_terms=False):
-
-    if len(X_underlay[0]) == 2:    
-        X_underlay = np.concatenate((X_underlay, np.zeros((len(X_underlay),1))), axis=1)
-
-    X_pleat = x_pleat_in.reshape(int(len(x_pleat_in)/3), 3)
-
-    X = np.concatenate((X_underlay, X_pleat), axis = 0)
-    
-    D1 = squareform(pdist(X,'euclidean'))  
-    
-    # maximize the embedding: such that the vertices are far from eath other
-    fval_max = -np.sum(np.sum(D1))
-
-    # make usre the inequality is satisfied
-    d_neq = get_mat_entry(D1, C_pleat_neq[:,0], C_pleat_neq[:, 1])
-    # fval_neq = sum(d_neq - C_pleat_neq[:,2] > eps_neq)
-    fval_neq = sum(np.power(d_neq - C_pleat_neq[:,2], 2))
-
-
-    # penalize the variance of the height
-    fval_var = np.var(X_pleat[:,2])
-
-    fval = fval_max + w_pleat_neq*fval_neq + w_var*fval_var
-
-    # print(fval)
-    if if_return_all_terms: # for debug
-        return fval_max, fval_neq, fval_var
-    else:
-        return fval
-
-
-
-# TODO: need to update according the user input
-def opti_get_BFGS_solver_options():
-    bfgs_options =  {'disp': True, 
-                   'verbose':1, 
-                   'xtol':1e-6, 
-                   'ftol':1e-6, 
-                   'maxiter':1e6, 
-                   'maxfun':1e6}
-
-    return bfgs_options
-
-
-# TODO: need to update according the user input
-def opti_get_NelderMead_solver_options():
-    
-    nm_options =  {'disp': True, 
-                   'verbose':1, 
-                   'xtol':1e-6, 
-                   'ftol':1e-6, 
-                   'maxiter':1e6, 
-                   'maxfun':1e6}
-
-    return nm_options
-
-def opti_energy_sg_underlay_old(x_in,
-                            C_eq, 
-                            C_neq, 
-                            w_eq=1e2,
-                            w_neq=1e6, 
-                            eps_neq=-1e-3,
-                            if_return_all_terms=False):
-    # energy to embedding the underaly graph of the smocked graph
-    x = x_in.reshape(int(len(x_in)/2), 2) # x_in the flattened xy-coordinates of the underaly graph
-    D1 = squareform(pdist(x,'euclidean'))
-
-    # maximize the embedding: such that the vertices are far from eath other
-    fval_max = -np.sum(np.sum(D1))
-
-    # make sure the equality is satisfied
-    d_eq = get_mat_entry(D1, C_eq[:, 0], C_eq[:, 1])
-    fval_eq = sum(np.power(d_eq - C_eq[:,2], 2))
-
-    # make usre the inequality is satisfied
-    d_neq = get_mat_entry(D1, C_neq[:,0], C_neq[:, 1])
-    fval_neq = sum(d_neq - C_neq[:,2] > eps_neq)
-
-    fval = fval_max + w_eq*fval_eq + w_neq*fval_neq
-    # print(fval)
-    if if_return_all_terms: # for debug
-        return fval_max, fval_eq, fval_neq
-    else:
-        return fval
-
-
-
-# TOOD: 
-def SG_find_valid_underlay_constraints_approx(sg, D):
-    # find inexact distance constraints if the underlay graph is too large
-    # check every triplet of vertices can be time consuming
-
-    print('Not done yet:/')
-
-
-
-
-def SG_find_valid_underlay_constraints_exact(sg, D):
-    # for the smocked graph (sg)
-    # find the valid the distance constraints in exact way
-    # i.e., consider all pairs of vertices
-
-    # input: D stores the pairwise distance constraint for the underlay graph
-    # extracted from the smocking pattern (to make sure the fabric won't break)
-    # but not all of them are useful for embedding optimization
-
-    start_time = time.time()
-        
-
-    # all combinations of (i,j,k) - a triplet of three vertices
-    c = nchoosek(range(sg.nv_underlay), 3)
-    # we then check how many of them are useless
-    # in exact way
-    useless_constr = []
-    for i, j, k in zip(c[:,0], c[:,1], c[:,2]):
-        if D[i,j] + D[i, k] < D[k, j]:
-            useless_constr.append([k,j])
-
-        if D[i,j] + D[k,j] <  D[i,k]:
-            useless_constr.append([i,k])
-
-        if D[i,k] + D[k,j] < D[i,j]:
-            useless_constr.append([i,j])
-
-
-    # remove redundant pairs
-    useless_constr = sort_edge(useless_constr)
-
-    # all vertex pairs
-    A = nchoosek(range(sg.nv_underlay), 2)
-    
-    idx_diff, _ = setdiffnd(A, useless_constr)
-    
-    constrained_vtx_pair = A[idx_diff]
-    msg = 'runtime: find constraints (exact): %f second' % (time.time() - start_time)
-    bpy.types.Scene.sl_props.runtime_log.append(msg)
-
-    return constrained_vtx_pair
 
 
     
@@ -806,15 +430,40 @@ class SmockedGraph():
         print('-------------------------------------------------------------------\n')
 
 
+    def plot_embed(self, 
+                   X,
+                   location=(0,-10)):
         
+        construct_object_from_mesh_to_scene(X, [], MESH_NAME_SG_EMBED, COLL_NAME_SG, self.E)
+        mesh = bpy.data.objects[MESH_NAME_SG_EMBED]
+        
+        mesh.scale = (1, 1, 1)
+        mesh.location = (location[0]-min(X[:,0]), location[1]-max(X[:,1])+min(X[:,1])-LAYOUT_Y_SHIFT, 0)
+        mesh.show_axis = False
+        mesh.show_wire = True
+        mesh.display_type = 'WIRE'
+        select_one_object(mesh)
+
+
+        text_loc = (location[0], location[1]-LAYOUT_Y_SHIFT+LAYOUT_TEXT, 0)
+        add_text_to_scene(body="Embedded Smocked Graph", 
+                          location=text_loc, 
+                          scale=(1,1,1),
+                          obj_name='embed_graph_annotation',
+                          coll_name=COLL_NAME_SG)
+        bpy.ops.object.mode_set(mode = 'OBJECT') 
+        for eid in self.eid_underlay:
+            mesh.data.edges[eid].bevel_weight = 0.7
+
+
         
     def plot(self, 
              location=(0,0), 
-             if_show_separate_underlay=True,
-             if_show_separate_pleat=True,
-             if_debug=True):
+             if_show_separate_underlay=False,
+             if_show_separate_pleat=False,
+             if_debug=False):
         initialize_pattern_collection(COLL_NAME_SG, COLL_NAME_SG_SL)        
-        construct_object_from_mesh_to_scene(self.V, self.F, MESH_NAME_SG, COLL_NAME_SG)
+        construct_object_from_mesh_to_scene(self.V, [], MESH_NAME_SG, COLL_NAME_SG, self.E)
         mesh = bpy.data.objects[MESH_NAME_SG]
         
         mesh.scale = (1, 1, 1)
@@ -831,6 +480,12 @@ class SmockedGraph():
                           scale=(1,1,1),
                           obj_name='graph_annotation',
                           coll_name=COLL_NAME_SG)
+        bpy.ops.object.mode_set(mode = 'OBJECT') 
+        for eid in self.eid_underlay:
+            mesh.data.edges[eid].bevel_weight = 0.7
+
+    
+
 
         # visualize the vertices in different colors
         fsp = self.full_smocking_pattern
@@ -2137,7 +1792,11 @@ def construct_object_from_mesh_to_scene(V, F, mesh_name, coll_name=COLL_NAME_FSP
     
     # create mesh in blender
     mesh = bpy.data.meshes.new(mesh_name)
-    mesh.from_pydata(verts, E, faces)
+    if faces == []: # for hexagon pattern
+        mesh.from_pydata(verts, E, faces) 
+    else: # for regular pattern, so we do not show the diagonal edges
+        mesh.from_pydata(verts, [], faces) 
+
     mesh.update(calc_edges=False) # we use our own edgeID
     object = bpy.data.objects.new(mesh_name, mesh)
     # link the object to the scene
@@ -2628,7 +2287,7 @@ class USP_CreateGrid(Operator):
         usp_loc, _ = update_usp_fsp_location()
 
 
-        add_text_to_scene(body="Unit Smocking Pattern", 
+        add_text_to_scene(body="Create Unit Pattern", 
                           location=(0, usp_loc[1] + base_y + LAYOUT_TEXT, 0), 
                           scale=(1,1,1),
                           obj_name='grid_annotation',
@@ -2676,6 +2335,8 @@ class HoneycombGrid(Operator):
 
     fsp.plot(fsp_loc)
     return {'FINISHED'}
+
+
 
 class FSP_Tile(Operator):
     """Generate the full smokcing pattern by tiling the specified unit pattern"""
@@ -3393,8 +3054,38 @@ class MagicButtonOperator(Operator):
         bpy.ops.object.prepare_arap_operator()
         bpy.ops.arap.realtime_operator()
 
+        dt = bpy.types.Scene.solver_data
+        sg = dt.smocked_graph
+        
+        # TODO: fix the relative position
+        if context.window_manager.if_show_smocked_graph:
+            sg.plot()
+        if context.window_manager.if_show_embedded_graph:
+            sg.plot_embed(dt.embeded_graph)
+
         return {'FINISHED'}
 
+def refresh_smocked_graph(self, context):
+    if self.if_show_smocked_graph:
+        dt = bpy.types.Scene.solver_data
+        sg = dt.smocked_graph
+        sg.plot()
+    else:
+        clean_one_object('graph_annotation')
+        clean_one_object(MESH_NAME_SG)
+    return
+
+
+def refresh_embedded_graph(self, context):
+    if self.if_show_embedded_graph:
+        dt = bpy.types.Scene.solver_data
+        sg = dt.smocked_graph
+        sg.plot_embed(dt.embeded_graph)
+    else:
+        clean_one_object('embed_graph_annotation')
+        clean_one_object(MESH_NAME_SG_EMBED)
+    return
+    
 
 
 class SG_embed_graph(Operator):
@@ -3499,29 +3190,14 @@ class debug_panel(bpy.types.Panel):
 
 
 
-class UnitGrid_panel:
+class UnitGrid_panel(bpy.types.Panel):
+    bl_label = "Unit Smocking Pattern"
+    bl_idname = "SD_PT_unit_grid_main"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "SmockingDesign"
     bl_options ={"HEADER_LAYOUT_EXPAND"}
-     
-    
 
-class UNITGRID_PT_main(UnitGrid_panel, bpy.types.Panel):
-    bl_label = "Unit Smocking Pattern"
-    bl_idname = "SD_PT_unit_grid_main"
-    bl_options ={"DEFAULT_CLOSED"}
-            
-    def draw(self, context):
-        pass
-
-    
-class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
-    bl_parent_id = 'SD_PT_unit_grid_main'
-    bl_label = "Create a New Pattern"
-    bl_options ={"DEFAULT_CLOSED"}
-    
-    
     def draw(self, context):
         props = context.scene.sl_props
         layout = self.layout
@@ -3572,31 +3248,7 @@ class UNITGRID_PT_create(UnitGrid_panel, bpy.types.Panel):
         row.alert=context.scene.if_highlight_button
         row.operator(ExportUnitPattern.bl_idname, text="Export", icon='EXPORT')
         box.row()
-        
-                 
-
-
-
-
-class UNITGRID_PT_load(UnitGrid_panel, bpy.types.Panel):
-    bl_parent_id = 'SD_PT_unit_grid_main'
-    bl_label = "Load Existing Pattern"
-    bl_options ={"DEFAULT_CLOSED"}
     
-    def draw(self, context):
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False  # No animation.
-
-#        layout.label(text= "Load an Existing Pattern")
-        box = layout.box()
-        box.row()
-        box.row().prop(context.scene, 'path_import')
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(ImportUnitPattern.bl_idname, text="Import", icon='IMPORT')
-        box.row()
-
 
 
 
@@ -3619,36 +3271,6 @@ class FULLGRID_PT_main(FullGrid_panel, bpy.types.Panel):
         pass
 
 
-
-        
-class FULLGRID_PT_tile(FullGrid_panel, bpy.types.Panel):
-    bl_label = "Tile Unit Grid"
-    bl_parent_id = 'SD_PT_full_grid_main'
-    bl_options ={"DEFAULT_CLOSED"}
-
-    
-    def draw(self, context):
-        
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False  # No animation.
-
-        box = layout.box()
-        box.row()
-        box.row().prop(context.scene,'num_x')
-        box.row().prop(context.scene,'num_y')
-    
-        box.row().prop(context.scene,'shift_x')
-        box.row().prop(context.scene,'shift_y')
-        
-        # layout.label(text= "Tiling Type:")
-        # row = layout.row()
-        # row.prop(context.scene, 'type_tile', expand=True)
-        
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
-        box.row()
 
 class CreateHextGridPanel(FullGrid_panel, bpy.types.Panel):
     bl_label = "Create honeybomb grid"
@@ -3949,25 +3571,25 @@ class FULLGRID_PT_export_mesh(FullGrid_panel, bpy.types.Panel):
         row.operator(FSP_Export.bl_idname, text="Export", icon='EXPORT')
         box.row()
         
-class FULLGRID_PT_import_mesh(FullGrid_panel, bpy.types.Panel):
-    bl_label = "Import full smocking pattern"
-    bl_parent_id = 'SD_PT_full_grid_main'
-    bl_options ={"DEFAULT_CLOSED"}
+# class FULLGRID_PT_import_mesh(FullGrid_panel, bpy.types.Panel):
+#     bl_label = "Import full smocking pattern"
+#     bl_parent_id = 'SD_PT_full_grid_main'
+#     bl_options ={"DEFAULT_CLOSED"}
     
-    def draw(self, context):
-      layout = self.layout
-      layout.use_property_split = True
-      layout.use_property_decorate = False  # No animation.
+#     def draw(self, context):
+#       layout = self.layout
+#       layout.use_property_split = True
+#       layout.use_property_decorate = False  # No animation.
 
-      box = layout.box()
-      box.row()
+#       box = layout.box()
+#       box.row()
       
-      box.row().prop(context.scene, 'path_import_fullpattern')
+#       box.row().prop(context.scene, 'path_import_fullpattern')
       
-      row = box.row()
-      row.alert=context.scene.if_highlight_button
-      row.operator(FSP_Import.bl_idname, text="Import", icon='IMPORT')
-      box.row()
+#       row = box.row()
+#       row.alert=context.scene.if_highlight_button
+#       row.operator(FSP_Import.bl_idname, text="Import", icon='IMPORT')
+#       box.row()
 
 
 
@@ -3985,78 +3607,128 @@ class FastSmock_panel(bpy.types.Panel):
         layout.use_property_split = True
         layout.use_property_decorate = False  # No animation.
 
-        layout.label(text= "Load an Existing Pattern")
-        box = layout.box()
-        box.row()
-        box.row().prop(context.scene, 'path_import')
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(ImportUnitPattern.bl_idname, text="Import", icon='IMPORT')
-        box.row()
+        row = layout.row()
+        row.operator(debug_clear.bl_idname, text="clear everything", icon='QUIT')
+
+        layout.row().prop(context.scene, 'fastsmock_select', expand=True)
+
+        if context.scene.fastsmock_select=='U':
+
+            layout.label(text= "Load a Unit Pattern")
+            box = layout.box()
+            box.row()
+            box.row().prop(context.scene, 'path_import')
+            row = box.row()
+            row.alert=context.scene.if_highlight_button
+            row.operator(ImportUnitPattern.bl_idname, text="Import", icon='IMPORT')
+            box.row()
 
 
-        layout.label(text= "Tile the Unit Pattern")
-        box = layout.box()
-        box.row()
-        box.row().prop(context.scene,'num_x')
-        box.row().prop(context.scene,'num_y')
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
-        box.row()
+            layout.label(text= "Tile the Unit Pattern")
+            box = layout.box()
+            box.row()
+            box.row().prop(context.scene,'num_x')
+            box.row().prop(context.scene,'num_y')
+            box.row().prop(context.scene,'shift_x')
+            box.row().prop(context.scene,'shift_y')
+
+            row = box.row()
+            row.alert=context.scene.if_highlight_button
+            row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
+            box.row()
+        else:
+            layout.label(text= "Load a Full Pattern")
+            box = layout.box()
+            box.row()
+      
+            box.row().prop(context.scene, 'path_import_fullpattern')      
+            row = box.row()
+            row.alert=context.scene.if_highlight_button
+            row.operator(FSP_Import.bl_idname, text="Import", icon='IMPORT')
+            box.row()
+
 
         row = layout.row()
         row.alert=context.scene.if_highlight_button
-        row.operator(MagicButtonOperator.bl_idname, text="Simulate the Smocking Pattern", icon='FILE_VOLUME')
+        row.operator(MagicButtonOperator.bl_idname, text="Run Simulation", icon='MOD_CLOTH')
         layout.row()
 
 
 
+
+
+
+
         
-class SmockedGraph_panel(bpy.types.Panel):
-    bl_label = "Smocked Graph"
-    bl_idname = "SD_PT_smocked_graph"
+class Parameter_panel(bpy.types.Panel):
+    bl_label = "Simulation Parameters"
+    bl_idname = "SD_PT_parameter"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "SmockingDesign"
     bl_options ={"DEFAULT_CLOSED"}
    
     def draw(self, context):
+
         layout = self.layout
         layout.use_property_split = True
         layout.use_property_decorate = False  # No animation.
 
-        layout.label(text="Show the Smocked Graph")
-        box = layout.row().box()
-        box.row()
-        box.row().prop(context.scene, "graph_select_type", expand=True)
-        box.row().prop(context.scene, "graph_highlight_type", expand=True)
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(SG_draw_graph.bl_idname, text='Visualize the Smocked Graph', icon="GREASEPENCIL")
-        box.row()
+        layout.label(text="Pleat Embedding Weights")
+        box = layout.box()
+        box.row().prop(context.scene, 'pleat_eq')
+        box.row().prop(context.scene, 'pleat_max_embed')
+        box.row().prop(context.scene, 'pleat_variance')
+
+
+        layout.label(text="ARAP parameters")
+        box = layout.box()
+        box.row().prop(context.scene, 'arap_constraint_weight')
+        box.row().prop(context.scene, 'arap_num_iters')
+
+
+        layout.label(text="Visualization")
+        box = layout.box()
+       
+        label = "Hide Smocked Graph" if context.window_manager.if_show_smocked_graph else "Show Smocked Graph"
+
+        box.row().prop(context.window_manager, 'if_show_smocked_graph', text=label, toggle=True)  
+
+
+        label = "Hide Embedded Graph" if context.window_manager.if_show_embedded_graph else "Show Embedded Graph"
+        box.row().prop(context.window_manager, 'if_show_embedded_graph', text=label, toggle=True)  
+
+        # layout.label(text="Show the Smocked Graph")
+        # box = layout.row().box()
+        # box.row()
+        # box.row().prop(context.scene, "graph_select_type", expand=True)
+        # box.row().prop(context.scene, "graph_highlight_type", expand=True)
+        # row = box.row()
+        # row.alert=context.scene.if_highlight_button
+        # row.operator(SG_draw_graph.bl_idname, text='Visualize the Smocked Graph', icon="GREASEPENCIL")
+        # box.row()
         
         
-        layout.label(text="Embed the Smocked Graph")
-        box = layout.row().box()
-        box.label(text="Optimization Parameters")
-        box.row().prop(context.scene, "opti_init_type", expand=True)
-        box.row().prop(context.scene, "opti_init_pleat_height")
-        box.row().prop(context.scene, "opti_dist_preserve", expand=True)
-        box.row().prop(context.scene, "opti_if_add_delaunay", expand=True)
-        box.row().prop(context.scene, "opti_mtd")
-        box.row().prop(context.scene, "opti_tol", slider=False)
-        box.row().prop(context.scene, "opti_maxIter", slider=False)
-        box.row().prop(context.scene, "opti_if_display")
+        # layout.label(text="Embed the Smocked Graph")
+        # box = layout.row().box()
+        # box.label(text="Optimization Parameters")
+        # box.row().prop(context.scene, "opti_init_type", expand=True)
+        # box.row().prop(context.scene, "opti_init_pleat_height")
+        # box.row().prop(context.scene, "opti_dist_preserve", expand=True)
+        # box.row().prop(context.scene, "opti_if_add_delaunay", expand=True)
+        # box.row().prop(context.scene, "opti_mtd")
+        # box.row().prop(context.scene, "opti_tol", slider=False)
+        # box.row().prop(context.scene, "opti_maxIter", slider=False)
+        # box.row().prop(context.scene, "opti_if_display")
         
 
 
 
 
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(SG_embed_graph.bl_idname, text='Embed the Smocked Graph', icon="GREASEPENCIL")
-        box.row()
+        # row = box.row()
+        # row.alert=context.scene.if_highlight_button
+        # row.operator(SG_embed_graph.bl_idname, text='Embed the Smocked Graph', icon="GREASEPENCIL")
+        # box.row()
         
         
         
@@ -4067,10 +3739,15 @@ class SmockedGraph_panel(bpy.types.Panel):
 wm = bpy.types.WindowManager
 wm.usp_drawing_started = bpy.props.BoolProperty(default=False)
 wm.fsp_drawing_started = bpy.props.BoolProperty(default=False)
+wm.test_toggle = bpy.props.BoolProperty(default=False)
+wm.if_show_smocked_graph = bpy.props.BoolProperty(default=True, update=refresh_smocked_graph)
+wm.if_show_embedded_graph = bpy.props.BoolProperty(default=False, update=refresh_embedded_graph)
+
 
 
 _classes = [
     
+
     debug_clear,
     debug_print,
     debug_render,
@@ -4078,31 +3755,34 @@ _classes = [
     debug_func,
 
     # UI panels.
+    FastSmock_panel,
+
+    Parameter_panel,
+
 
     # Debug.
     debug_panel,
     # Unit grid panel.
-    UNITGRID_PT_main,
-    UNITGRID_PT_create,
-    UNITGRID_PT_load,
+    UnitGrid_panel,
+
     # Full smocking pattern panel.
     FULLGRID_PT_main,
-    FULLGRID_PT_tile,
+    
+    # FULLGRID_PT_tile,
+    
     CreateHextGridPanel,
     FULLGRID_PT_combine_patterns,
     FULLGRID_PT_edit_pattern,
     FULLGRID_PT_add_margin,
     FULLGRID_PT_export_mesh,
-    FULLGRID_PT_import_mesh,
+    # FULLGRID_PT_import_mesh,
     # Embedding panel
     embedding_panel,
     # Arap panel
     arap_panel,
     ArapGridPanel,
     CylinderArap,
-    # Smocked graph panel.
-    SmockedGraph_panel,
-    FastSmock_panel,
+    
     
     USP_CreateGrid,
     USP_SaveCurrentStitchingLine,
@@ -4186,9 +3866,6 @@ if __name__ == "__main__":
 #                                        location=(base_x/2, base_y/2,0),
 #                                        x_subdivisions=base_x + 1,
 #                                        y_subdivisions=base_y + 1) 
-
-
-
 
 
 
@@ -4591,3 +4268,457 @@ if __name__ == "__main__":
 #         X_all = np.concatenate((X_underlay, X_pleat), axis=0)
 
 #         # print(X_all)
+
+
+
+
+#--------------------------------------
+#  old embedding code
+#--------------------------------------
+
+# def opti_energy_maximize_embedding(X):
+#     D = squareform(pdist(X,'euclidean'))  
+#     fval = -np.sum(np.sum(D))
+#     return fval
+
+
+# def opti_energy_pleat_height_varicance(X_pleat):
+#     fval = np.var(X_pleat[:,2])
+#     return fval
+
+
+# def opti_energy_preserve_edge_length(X, C_eq):
+#     I = C_eq[:,0].astype(int)
+#     J = C_eq[:,1].astype(int)
+#     d_eq = np.sqrt(np.sum(np.power(X[I, :] - X[J, :], 2),axis = 1))
+#     fval = sum(np.power(d_eq - C_eq[:,2], 2))
+#     return fval
+
+
+
+# def opti_energy_sg_underlay(x_in, C_eq):
+#     # energy to embedding the underaly graph of the smocked graph
+#     X = x_in.reshape(int(len(x_in)/2), 2) # x_in the flattened xy-coordinates of the underaly graph
+#     return opti_energy_preserve_edge_length(X, C_eq)
+
+
+# def opti_energy_sg_pleat(x_pleat_in, 
+#                          X_underlay, 
+#                          C_pleat_eq,
+#                          w_embed=1,
+#                          w_eq=1e4,
+#                          w_var = 1):
+#     if len(X_underlay[0]) == 2:    
+#         X_underlay = np.concatenate((X_underlay, np.zeros((len(X_underlay),1))), axis=1)
+
+#     X_pleat = x_pleat_in.reshape(int(len(x_pleat_in)/3), 3)
+
+#     X = np.concatenate((X_underlay, X_pleat), axis = 0)
+
+#     fval = w_embed*opti_energy_maximize_embedding(X) +\
+#            w_eq*opti_energy_preserve_edge_length(X, C_pleat_eq) +\
+#            w_var*opti_energy_pleat_height_varicance(X_pleat)
+
+#     return fval
+
+
+# def opti_energy_sg_pleat_old(x_pleat_in,
+#                          X_underlay,
+#                          C_pleat_neq, 
+#                          w_pleat_neq=1e6, 
+#                          w_var = 1e1,
+#                          eps_neq=-1e-3,
+#                          if_return_all_terms=False):
+
+#     if len(X_underlay[0]) == 2:    
+#         X_underlay = np.concatenate((X_underlay, np.zeros((len(X_underlay),1))), axis=1)
+
+#     X_pleat = x_pleat_in.reshape(int(len(x_pleat_in)/3), 3)
+
+#     X = np.concatenate((X_underlay, X_pleat), axis = 0)
+    
+#     D1 = squareform(pdist(X,'euclidean'))  
+    
+#     # maximize the embedding: such that the vertices are far from eath other
+#     fval_max = -np.sum(np.sum(D1))
+
+#     # make usre the inequality is satisfied
+#     d_neq = get_mat_entry(D1, C_pleat_neq[:,0], C_pleat_neq[:, 1])
+#     # fval_neq = sum(d_neq - C_pleat_neq[:,2] > eps_neq)
+#     fval_neq = sum(np.power(d_neq - C_pleat_neq[:,2], 2))
+
+
+#     # penalize the variance of the height
+#     fval_var = np.var(X_pleat[:,2])
+
+#     fval = fval_max + w_pleat_neq*fval_neq + w_var*fval_var
+
+#     # print(fval)
+#     if if_return_all_terms: # for debug
+#         return fval_max, fval_neq, fval_var
+#     else:
+#         return fval
+
+
+
+# # TODO: need to update according the user input
+# def opti_get_BFGS_solver_options():
+#     bfgs_options =  {'disp': True, 
+#                    'verbose':1, 
+#                    'xtol':1e-6, 
+#                    'ftol':1e-6, 
+#                    'maxiter':1e6, 
+#                    'maxfun':1e6}
+
+#     return bfgs_options
+
+
+# # TODO: need to update according the user input
+# def opti_get_NelderMead_solver_options():
+    
+#     nm_options =  {'disp': True, 
+#                    'verbose':1, 
+#                    'xtol':1e-6, 
+#                    'ftol':1e-6, 
+#                    'maxiter':1e6, 
+#                    'maxfun':1e6}
+
+#     return nm_options
+
+# def opti_energy_sg_underlay_old(x_in,
+#                             C_eq, 
+#                             C_neq, 
+#                             w_eq=1e2,
+#                             w_neq=1e6, 
+#                             eps_neq=-1e-3,
+#                             if_return_all_terms=False):
+#     # energy to embedding the underaly graph of the smocked graph
+#     x = x_in.reshape(int(len(x_in)/2), 2) # x_in the flattened xy-coordinates of the underaly graph
+#     D1 = squareform(pdist(x,'euclidean'))
+
+#     # maximize the embedding: such that the vertices are far from eath other
+#     fval_max = -np.sum(np.sum(D1))
+
+#     # make sure the equality is satisfied
+#     d_eq = get_mat_entry(D1, C_eq[:, 0], C_eq[:, 1])
+#     fval_eq = sum(np.power(d_eq - C_eq[:,2], 2))
+
+#     # make usre the inequality is satisfied
+#     d_neq = get_mat_entry(D1, C_neq[:,0], C_neq[:, 1])
+#     fval_neq = sum(d_neq - C_neq[:,2] > eps_neq)
+
+#     fval = fval_max + w_eq*fval_eq + w_neq*fval_neq
+#     # print(fval)
+#     if if_return_all_terms: # for debug
+#         return fval_max, fval_eq, fval_neq
+#     else:
+#         return fval
+
+
+
+# # TOOD: 
+# def SG_find_valid_underlay_constraints_approx(sg, D):
+#     # find inexact distance constraints if the underlay graph is too large
+#     # check every triplet of vertices can be time consuming
+
+#     print('Not done yet:/')
+
+
+
+
+# def SG_find_valid_underlay_constraints_exact(sg, D):
+#     # for the smocked graph (sg)
+#     # find the valid the distance constraints in exact way
+#     # i.e., consider all pairs of vertices
+
+#     # input: D stores the pairwise distance constraint for the underlay graph
+#     # extracted from the smocking pattern (to make sure the fabric won't break)
+#     # but not all of them are useful for embedding optimization
+
+#     start_time = time.time()
+        
+
+#     # all combinations of (i,j,k) - a triplet of three vertices
+#     c = nchoosek(range(sg.nv_underlay), 3)
+#     # we then check how many of them are useless
+#     # in exact way
+#     useless_constr = []
+#     for i, j, k in zip(c[:,0], c[:,1], c[:,2]):
+#         if D[i,j] + D[i, k] < D[k, j]:
+#             useless_constr.append([k,j])
+
+#         if D[i,j] + D[k,j] <  D[i,k]:
+#             useless_constr.append([i,k])
+
+#         if D[i,k] + D[k,j] < D[i,j]:
+#             useless_constr.append([i,j])
+
+
+#     # remove redundant pairs
+#     useless_constr = sort_edge(useless_constr)
+
+#     # all vertex pairs
+#     A = nchoosek(range(sg.nv_underlay), 2)
+    
+#     idx_diff, _ = setdiffnd(A, useless_constr)
+    
+#     constrained_vtx_pair = A[idx_diff]
+#     msg = 'runtime: find constraints (exact): %f second' % (time.time() - start_time)
+#     bpy.types.Scene.sl_props.runtime_log.append(msg)
+
+#     return constrained_vtx_pair
+
+
+
+
+        # initialize_collections()
+        # initialize_data()
+
+    
+        # context.scene.path_import = '/Users/avivsegall/projs/SmockingDesign/unit_smocking_patterns/braid.usp'
+        # bpy.ops.object.import_unit_pattern()
+
+        # bpy.context.scene.num_x = 5
+        # bpy.context.scene.num_y = 5
+                
+        # bpy.ops.object.create_full_smocking_pattern()
+
+        
+        # bpy.ops.object.sg_draw_graph()
+
+
+        # dt = bpy.types.Scene.solver_data
+
+
+        # fsp = dt.full_smocking_pattern
+        # sg = dt.smocked_graph
+    
+        # C_underlay_eq, C_pleat_eq = sg.return_distance_constraint()
+
+
+        # #----------------- embed the underlay 
+        # X_underlay_ini = sg.V[sg.vid_underlay, 0:2]    
+
+    
+        # x0 = X_underlay_ini.flatten()
+        
+        # start_time = time.time()
+        # res_underlay = np.array(cpp_smocking_solver.embed_underlay(X_underlay_ini, C_underlay_eq))
+        # '''
+        # res_underlay = minimize(opti_energy_sg_underlay, 
+        #                    x0, 
+        #                    method='Nelder-Mead',
+        #                    args=(C_underlay_eq), 
+        #                    options=opti_get_NelderMead_solver_options())
+        # '''
+        # msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
+        # bpy.types.Scene.sl_props.runtime_log.append(msg)
+
+        # X = res_underlay.reshape(int(len(res_underlay)),2)
+
+        # X_underlay = np.concatenate((X, np.zeros((len(X),1))), axis=1)
+
+        # #------------------ embed the pleat
+        # X_pleat = sg.V[sg.vid_pleat, 0:2]
+
+        # # option 01: initialize from the original position 
+        # X_pleat = np.concatenate((X_pleat, np.ones((len(X_pleat),1))), axis=1)
+        
+        # x0 = X_pleat.flatten()
+        # w_pleat_embed = 1
+        # w_pleat_eq = 1e3
+        # w_pleat_var = 1
+        # start_time = time.time()
+        # res_pleat = np.array(cpp_smocking_solver.embed_pleats(
+        #   X_underlay, X_pleat, C_pleat_eq, w_pleat_var, w_pleat_embed, w_pleat_eq))
+        # '''
+        # res_pleat = minimize(opti_energy_sg_pleat, 
+        #                    x0, 
+        #                    method='Nelder-Mead',
+        #                    args=(X_underlay, C_pleat_eq, w_pleat_embed, w_pleat_eq, w_pleat_var), 
+        #                    options=opti_get_NelderMead_solver_options())
+        # '''
+        # msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
+        # bpy.types.Scene.sl_props.runtime_log.append(msg)
+
+        # X_pleat = res_pleat.reshape(int(len(res_pleat)), 3)
+
+
+
+        # X_all = np.concatenate((X_underlay, X_pleat), axis=0)
+
+        # print_runtime()
+
+        # # Run arap.
+        # g_arap, g_constraints, g_F, UV = prepare_arap(X_all, fsp, sg)
+        # g_V = g_arap(g_constraints, 0)
+        # g_iters = 100
+
+        # # Show the result.
+        # smocked_mesh = bpy.data.meshes.new("Smocked")
+        # smocked_mesh.from_pydata(g_V.T,[],g_F)
+        
+        # smocked_mesh.update()
+        # g_mesh = smocked_mesh
+        # dt.arap_data = [g_V, g_F, g_mesh, g_iters, g_arap, g_constraints]
+
+        # # Add uv layer
+        # uvlayer = smocked_mesh.uv_layers.new()
+        # for face in smocked_mesh.polygons:
+        #   for vert_idx, loop_idx in zip(face.vertices, face.loop_indices):
+        #       uvlayer.data[loop_idx].uv = (UV[vert_idx, 0] / 20.0, UV[vert_idx, 1] / 20.0)
+        
+        # obj = bpy.data.objects.new('Smocked mesh', smocked_mesh)
+        # obj.location = (0, 0, 4)
+        # obj.data.materials.append(bpy.data.materials['Fabric035'])
+        # for f in obj.data.polygons:
+        #   f.use_smooth = True
+        # smocked_collection = bpy.data.collections.new('smocked_collection')
+        # bpy.context.scene.collection.children.link(smocked_collection)
+        # smocked_collection.objects.link(obj)
+
+        # # add_text_to_scene(body="Simulated Smocked Mesh", 
+        # #                   location=(0, -32, 0), 
+        # #                   scale=(1,1,1),
+        # #                   obj_name='grid_annotation',
+        # #                   coll_name=COLL_NAME_USP)
+
+
+        # # trans = [0,-30, 0]
+        # # for eid in range(sg.ne):
+        # #     vtxID = sg.E[eid, :]
+        # #     pos = X_all[vtxID, :] + trans
+        # #     if sg.is_edge_underlay(eid):
+        # #         col = col_gray
+        # #     else:
+        # #         col = col_red
+        # #     draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+        
+
+
+        # # X = X_underlay
+        # # trans = [0,-20, 0]
+        # # for eid in sg.eid_underlay:
+        # #     vtxID = sg.E[eid, :]
+        # #     pos = X[vtxID, :] + trans
+        # #     draw_stitching_line(pos, col_red, "embed_underlay2_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+
+
+        # '''
+        # #----------------- plot the embeded graph
+        
+        
+        
+
+        # for vid in range(len(X)):
+        #     pos = X[vid, :] + trans
+        #     add_text_to_scene(body='v'+str(vid), 
+        #                       location=tuple(pos), 
+        #                       scale=(1,1,1),
+        #                       obj_name='v'+str(vid),
+        #                       coll_name=COLL_NAME_SG)
+
+        
+        # # X = X_underlay
+        # trans = [0,-30, 0]
+        # for eid in range(sg.ne):
+        #     vtxID = sg.E[eid, :]
+        #     pos = X_all[vtxID, :] + trans
+        #     if sg.is_edge_underlay(eid):
+        #         col = col_gray
+        #     else:
+        #         col = col_red
+        #     draw_stitching_line(pos, col, "embed_" + str(eid), int(STROKE_SIZE/2), COLL_NAME_SG)
+        
+        # '''
+
+
+
+
+
+
+
+      
+# class FULLGRID_PT_tile(FullGrid_panel, bpy.types.Panel):
+#     bl_label = "Tile Unit Grid"
+#     bl_parent_id = 'SD_PT_full_grid_main'
+#     bl_options ={"DEFAULT_CLOSED"}
+
+    
+#     def draw(self, context):
+        
+#         layout = self.layout
+#         layout.use_property_split = True
+#         layout.use_property_decorate = False  # No animation.
+
+#         box = layout.box()
+#         box.row()
+#         box.row().prop(context.scene,'num_x')
+#         box.row().prop(context.scene,'num_y')
+    
+#         box.row().prop(context.scene,'shift_x')
+#         box.row().prop(context.scene,'shift_y')
+        
+#         # layout.label(text= "Tiling Type:")
+#         # row = layout.row()
+#         # row.prop(context.scene, 'type_tile', expand=True)
+        
+#         row = box.row()
+#         row.alert=context.scene.if_highlight_button
+#         row.operator(FSP_Tile.bl_idname, text="Generate by Tiling", icon='FILE_VOLUME')
+#         box.row()
+
+
+
+
+# class OptiData():
+#     C_underlay_eq = []
+#     C_underlay_neq = []
+#     C_pleat_eq = []
+#     C_pleat_neq = []
+#     weights = {'w_underlay_eq': 1e5, 
+#                'w_underlay_neq': 1e2,
+#                'eps_enq': -1e-6,
+#                'w_pleat_eq': 1e5,
+#                'w_pleat_neq': 1e3}
+
+
+
+
+    # # Smocked graph
+
+    # ('graph_select_type', bpy.props.EnumProperty(items= (('V', 'VERT', 'highlight vertices', 'VERTEXSEL', 0),    
+    #                                                       ('E', 'EDGE', 'highlight edges', 'EDGESEL', 1)),    
+    #                                default="V",
+    #                                name = "Select",  
+    #                                description = "")),
+    # ('graph_highlight_type', bpy.props.EnumProperty(items= (('all', 'all', 'show all vtx/edge'),
+    #                                                   ('underlay', 'underlay', 'highlight underlay'),    
+    #                                                   ('pleat', 'pleat', 'hightlight pleat')) ,  
+    #                                default="all",
+    #                                name = "Highlight",  
+    #                                description = "")),
+    # ('opti_init_type', bpy.props.EnumProperty(items= (('center', 'center', 'center of stitching lines'),    
+    #                                                   ('random', 'random', 'random initialization')) ,  
+    #                                default="center",
+    #                                name = "Initialization",  
+    #                                description = "Initialization")),
+    # ('opti_init_pleat_height', bpy.props.FloatProperty(name="Initial Pleat Height", default=1, min=0.1, max=5)),
+    
+    # ('opti_dist_preserve', bpy.props.EnumProperty(items= (('exact', 'exact', 'exact'),    
+    #                                                   ('approx', 'approximation', 'approximation')) ,  
+    #                                default="exact",
+    #                                name = "Constraints",  
+    #                                description = "Constraints")),
+
+    # ('opti_if_add_delaunay', bpy.props.BoolProperty(name="Add Constraints from Delaunay", default=False)),
+
+    # ('opti_mtd', bpy.props.EnumProperty(items= (('Newton', 'Newton-CG', 'Newton Conjugated Gradient'),    
+    #                                             ('BFGS', 'BFGS', 'BFGS')) ,  
+    #                                default="Newton",
+    #                                name = "Solver",  
+    #                                description = "Solver")),
+
+    # ('opti_tol', bpy.props.FloatProperty(name="Tolerance", default=1e-3, min=1e-12, max=0.1)),
+    # ('opti_maxIter', bpy.props.IntProperty(name="MaxIter", default=100, min=1, max=100000)),
+    # ('opti_if_display', bpy.props.BoolProperty(name="Print convergence messages", default=True))
