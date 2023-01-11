@@ -164,7 +164,8 @@ PROPS = [
     ('pleat_max_embed', bpy.props.FloatProperty(name='max_embed', default=1, min=0.0)), 
     ('pleat_variance', bpy.props.FloatProperty(name='height_var', default=1, min=0.0)), 
     ('arap_constraint_weight', bpy.props.FloatProperty(name='contr_weight', default=1, min=0.0)), 
-    ('arap_num_iters', bpy.props.IntProperty(name='num_iter', default=100, min=0))
+    ('arap_num_iters', bpy.props.IntProperty(name='num_iter', default=100, min=0)),
+    ('object_to_wrap', bpy.props.StringProperty(name="Object to wrap"))
 
 
         
@@ -193,6 +194,7 @@ class SolverData():
     embeded_graph = None
     arap_data = None
     smocking_design = []
+    hex_centers = []
 
     # temporary data
     tmp_fsp1 = []
@@ -867,39 +869,34 @@ def prepare_cylinder_arap(V, F, pattern_arap, fsp, sg, weight = 1):
   anchor_ids = pattern_arap.anchors
   nl = fsp.num_stitching_lines()
   underlay_anchors = [anchor_ids[i] for i in range(len(anchor_ids)) if sg.dict_sp2sg[i] < nl]
-  num_underlay = len(underlay_anchors)
   underlay_locations = V[underlay_anchors]
-  bbox_min, bbox_max = (np.amin(underlay_locations, axis=0), np.amax(underlay_locations, axis=0))
-  # The height and circumference of the cylinder. 
-  l = bbox_max - bbox_min
-  center = (bbox_max + bbox_min) / 2
-  # Fold to a cylinder along the x direction.
-  r = l[0] / (2 * np.pi)
+  # bbox_min, bbox_max = (np.amin(underlay_locations, axis=0), np.amax(underlay_locations, axis=0))
+  # The height and circumference of the cylinder.
+  # l = bbox_max - bbox_min
+  l = [
+  np.amax(underlay_locations[:, 0]) - np.amin(underlay_locations[:, 0]),
+  np.amax(V[:, 1]) - np.amin(V[:, 1]),
+      ]
 
-  cyl_uv, cyl_verts, cyl_faces = wrapping.create_cylinder(l)
-  # constraints = wrapping.get_constraints_from_param(underlay_locations, underlay_anchors,
-  # cyl_uv, cyl_verts)
-  constraints, constraints_weight, delete_verts = wrapping.get_constraints_from_param_bary(V, 
-  anchor_ids, fsp, sg, cyl_uv, cyl_verts, cyl_faces)
+  if bpy.context.scene.object_to_wrap == "":
+    uv, verts, faces = wrapping.create_cylinder(l)
+  else:
+    selected_obj = bpy.data.objects[bpy.context.scene.object_to_wrap]
+    mesh_obj = bpy.data.objects['smocked_obj']
+    bpy.context.view_layer.objects.active = selected_obj
+    bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_MASS', center='MEDIAN')
+    bpy.context.view_layer.objects.active = mesh_obj
+    bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_MASS', center='MEDIAN')
+    mesh_obj.rotation_euler = selected_obj.rotation_euler
+    mesh_obj.location = selected_obj.location
+    uv, verts, faces = wrapping.get_object_data(selected_obj)
+  constraints, constraints_weight, delete_verts, area_ratio = wrapping.get_constraints_from_param_bary(V, 
+  anchor_ids, fsp, sg, uv, verts, faces)
 
-  # # Shift up by r.
-  # underlay_locations = np.concatenate([underlay_locations[:,0:2], r * np.ones([num_underlay, 1])], axis=1)
-  # underlay_locations[:, 0] -= center[0]
-  # # Rotate along the y axis.
-  # new_locations = []
-  # for loc in underlay_locations:
-  #   x,y,z = loc
-  #   theta = -((x) / (l[0]*0.8)) * np.pi
-  #   new_locations.append([x * np.cos(theta) - z * np.sin(theta), y,
-  #                         x * np.sin(theta) + z * np.cos(theta)])
-  # new_locations = np.array(new_locations)
-  # new_locations[:, 0] += center[0]
-
-  # New constraints for underlay.
-  # constraints = {underlay_anchors[i] : new_locations[i] for i in range(num_underlay)}
+  V = V / np.sqrt(area_ratio)
 
   cyl_arap = awrap.ARAP(V.transpose(), F, constraints_weight, constraints)
-  return cyl_arap, constraints, delete_verts
+  return cyl_arap, constraints, delete_verts, V
 
 
 def prepare_arap(x, fsp, sg, weight = 1):
@@ -1937,8 +1934,12 @@ def initialize_data():
     area = next(area for area in bpy.context.screen.areas if area.type == 'VIEW_3D')
     space = next(space for space in area.spaces if space.type == 'VIEW_3D')
     space.shading.type = 'RENDERED'
+    if 'sun_data' in bpy.data.lights:
+      bpy.data.lights.remove(bpy.data.lights["sun_data"])
     light_data = bpy.data.lights.new(name="sun_data", type='SUN')
     light_data.energy = 0.8
+    if "sun" in bpy.data.objects:
+      bpy.data.objects.remove(bpy.data.objects["sun"])
     light_object = bpy.data.objects.new(name="sun", object_data=light_data)
     light_object.rotation_euler.y = 0.2
     light_object.rotation_euler.x = -0.2
@@ -2990,7 +2991,8 @@ class PrepareCylinderArapOperator(Operator):
     fsp = dt.full_smocking_pattern
     sg = dt.smocked_graph
     weight = context.scene.arap_constraint_weight
-    g_arap, g_constraints, delete_verts = prepare_cylinder_arap(g_V.T, g_F, g_arap, fsp, sg, weight)
+    g_arap, g_constraints, delete_verts, new_verts = prepare_cylinder_arap(g_V.T, g_F, g_arap, fsp, sg, weight)
+    dt.arap_data[0] = new_verts.T
     dt.arap_data[4] = g_arap
     dt.arap_data[5] = g_constraints
     dt.delete_verts = delete_verts
@@ -3362,6 +3364,7 @@ class CylinderArap(bpy.types.Panel):
     box.row().prop(context.scene, 'arap_constraint_weight')
     box.row().prop(context.scene, 'arap_num_iters')
 
+    layout.row().prop_search(context.scene, "object_to_wrap", bpy.data, "objects")
     layout.row().operator(PrepareCylinderArapOperator.bl_idname, text="Prepare", icon='IMPORT')
     layout.row().operator(RealtimeArapOperator.bl_idname, text="Run (esc to stop)", icon='IMPORT')
     layout.row().operator(DeleteMargins.bl_idname, text="DeleteMargins", icon='IMPORT')
@@ -3840,6 +3843,7 @@ def register():
         
     bpy.types.Scene.sl_props = GlobalVariable()
     bpy.types.Scene.solver_data = SolverData()
+    initialize_data()
     
 
 def unregister():

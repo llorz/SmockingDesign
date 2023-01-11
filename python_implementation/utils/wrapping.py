@@ -1,5 +1,6 @@
 import numpy as np
 import importlib
+import bpy
 import itertools
 
 import cpp_smocking_solver
@@ -95,13 +96,23 @@ def get_constraints_from_param(underlay_locations, underlay_anchors, uv, verts):
                    for i in range(len(vid)) if dists[i][vid[i]] < 1e-1}
     return constraints
 
+def mesh_area(verts, faces):
+  area = 0
+  for f in faces:
+    v1 = verts[f[0]]
+    v2 = verts[f[1]]
+    v3 = verts[f[2]]
+    area += np.linalg.norm(np.cross(v2-v1, v3-v2)) / 2
+  return area
+
 
 def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
     underlay_anchors = get_underlay_nodes_ids(fsp, vids, sg)
     underlay_locations = x[underlay_anchors]
     underlay_locations = underlay_locations[:, 0:2]
     # Get bbox of underlay.
-    underlay_bbox = get_bbox(underlay_locations)
+    # underlay_bbox = get_bbox(underlay_locations)
+    underlay_bbox = get_bbox(x[:, 0:2])
     underlay_locations -= (underlay_bbox[0] + underlay_bbox[1]) / 2
     x -= np.concatenate([(underlay_bbox[0] + underlay_bbox[1]) / 2, [0]])
     # and uv.
@@ -109,11 +120,15 @@ def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
     uv -= (uv_bbox[0] + uv_bbox[1])/2
 
     # Resize uv to fit in underlay_bbox
-    ratio = (underlay_bbox[1] - underlay_bbox[0]) / (uv_bbox[1] - uv_bbox[0])
+    underlay_bbox_size = underlay_bbox[1] - underlay_bbox[0]
+    ratio = underlay_bbox_size / (uv_bbox[1] - uv_bbox[0])
     min_ratio = min(ratio)
-    # Only scale uv down if necessary.
-    uv *= min(1., min_ratio)
-    verts = center(verts) * min(1., min_ratio)
+    # Scale uv to fit the boundary box of x.
+    uv *= min_ratio
+    # Scale the vertices according to the areas ratio.
+    area_ratio = (underlay_bbox_size[0] * underlay_bbox_size[1]) / mesh_area(verts, faces)
+    # Scale by * np.sqrt(area_ratio)
+    # verts = center(verts) 
 
     # Find the underlay nodes that should be constrained.
     coords = cpp_smocking_solver.bary_coords(x, uv, faces)
@@ -130,8 +145,8 @@ def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
         # Pleat that should not be removed but doesn't have any constraints.
         # if i not in vids:
           # continue
+        v1, v2, v3 = verts[face[0]], verts[face[1]], verts[face[2]]
         if i not in underlay_anchors:
-            v1, v2, v3 = verts[face[0]], verts[face[1]], verts[face[2]]
             mesh_pos = l1 * v1 + l2 * v2 + l3 * v3
             n = np.cross(v2-v1, v3-v2)
             n = n / np.linalg.norm(n)
@@ -140,7 +155,16 @@ def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
             continue
         # Get constraint from the location on the triangle.
         constraint_weight[i] = 1
-        constraints[i] = l1 * verts[faces[int(f)][0]] + l2 * \
-            verts[faces[int(f)][1]] + l3 * verts[faces[int(f)][2]]
+        constraints[i] = l1 * v1 + l2 * v2 + l3 * v3
 
-    return constraints, constraint_weight, delete_verts
+    return constraints, constraint_weight, delete_verts, area_ratio
+
+def get_object_data(obj):
+  mesh = obj.data
+  verts = np.array([v.co for v in mesh.vertices])
+  faces = np.array([[l.vertices[i] for i in range(3)] for l in mesh.loop_triangles])
+  uvs = np.zeros([len(verts), 2])
+  for l in mesh.loop_triangles:
+    for i in range(3):
+      uvs[l.vertices[i], :] = np.array(mesh.uv_layers.active.data[l.loops[i]].uv)
+  return uvs, verts, faces
