@@ -3716,7 +3716,7 @@ wm = bpy.types.WindowManager
 wm.usp_drawing_started = bpy.props.BoolProperty(default=False)
 wm.fsp_drawing_started = bpy.props.BoolProperty(default=False)
 wm.test_toggle = bpy.props.BoolProperty(default=False)
-wm.if_show_smocked_graph = bpy.props.BoolProperty(default=True, update=refresh_smocked_graph)
+wm.if_show_smocked_graph = bpy.props.BoolProperty(default=False, update=refresh_smocked_graph)
 wm.if_show_embedded_graph = bpy.props.BoolProperty(default=False, update=refresh_embedded_graph)
 
 
