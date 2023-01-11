@@ -25,12 +25,14 @@ FILE_PATH = os.path.dirname(bpy.context.space_data.text.filepath)
 sys.path.append(FILE_PATH)
 import cpp_smocking_solver
 import arap
+import awrap
 import arap_stitching_lines
 import cloth_sim
 import honeycomb
 import wrapping
 importlib.reload(cpp_smocking_solver)
 importlib.reload(arap)
+importlib.reload(awrap)
 importlib.reload(arap_stitching_lines)
 importlib.reload(cloth_sim)
 importlib.reload(honeycomb)
@@ -1222,7 +1224,7 @@ def prepare_cylinder_arap(V, F, pattern_arap, fsp, sg, weight = 1):
   cyl_uv, cyl_verts, cyl_faces = wrapping.create_cylinder(l)
   # constraints = wrapping.get_constraints_from_param(underlay_locations, underlay_anchors,
   # cyl_uv, cyl_verts)
-  constraints, delete_verts = wrapping.get_constraints_from_param_bary(V, 
+  constraints, constraints_weight, delete_verts = wrapping.get_constraints_from_param_bary(V, 
   anchor_ids, fsp, sg, cyl_uv, cyl_verts, cyl_faces)
 
   # # Shift up by r.
@@ -1241,14 +1243,13 @@ def prepare_cylinder_arap(V, F, pattern_arap, fsp, sg, weight = 1):
   # New constraints for underlay.
   # constraints = {underlay_anchors[i] : new_locations[i] for i in range(num_underlay)}
 
-
-  cyl_arap = arap.ARAP(V.transpose(), F, list(constraints.keys()), weight)
-  return cyl_arap, constraints
+  cyl_arap = awrap.ARAP(V.transpose(), F, constraints_weight, constraints)
+  return cyl_arap, constraints, delete_verts
 
 
 def prepare_arap(x, fsp, sg, weight = 1):
   bbox_min, bbox_max = (np.amin(fsp.V, axis=0), np.amax(fsp.V, axis=0))
-  margin_x, margin_y = (0.5, 0.5)
+  margin_x, margin_y = (0.8, 0.8)
   grid_size = [int((bbox_max[0] - bbox_min[0] + 2*margin_x) / 0.15),
                int((bbox_max[1] - bbox_min[1] + 2*margin_y) / 0.15)]
   # Create grid.
@@ -3294,7 +3295,28 @@ class SG_draw_graph(Operator):
         return {'FINISHED'}
 
 
+class DeleteMargins(Operator):
+  bl_idname = "object.delete_margins"
+  bl_label = "Delete Margins"
+  bl_options = {'REGISTER', 'UNDO'}
 
+  def execute(self, context):
+    dt = bpy.types.Scene.solver_data
+    
+    obj = bpy.data.objects["smocked_obj"]
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode = 'EDIT')
+    bpy.ops.mesh.select_all(action='DESELECT')
+    g_V, g_F, g_mesh, g_iters, g_arap, g_constraints = dt.arap_data
+    bm = bmesh.from_edit_mesh(g_mesh)
+    bm.verts.ensure_lookup_table()
+    for i in dt.delete_verts:
+      bm.verts[i].select = True
+    bpy.ops.mesh.delete(type='VERT')
+
+    bpy.ops.object.mode_set(mode = 'OBJECT')
+
+    return {'FINISHED'}
 
 class PrepareCylinderArapOperator(Operator):
   bl_idname = "object.prepare_cylinder_arap_operator"
@@ -3307,9 +3329,10 @@ class PrepareCylinderArapOperator(Operator):
     fsp = dt.full_smocking_pattern
     sg = dt.smocked_graph
     weight = context.scene.arap_constraint_weight
-    g_arap, g_constraints = prepare_cylinder_arap(g_V.T, g_F, g_arap, fsp, sg, weight)
+    g_arap, g_constraints, delete_verts = prepare_cylinder_arap(g_V.T, g_F, g_arap, fsp, sg, weight)
     dt.arap_data[4] = g_arap
     dt.arap_data[5] = g_constraints
+    dt.delete_verts = delete_verts
 
     return {'FINISHED'}
 
@@ -3719,6 +3742,7 @@ class CylinderArap(bpy.types.Panel):
 
     layout.row().operator(PrepareCylinderArapOperator.bl_idname, text="Prepare", icon='IMPORT')
     layout.row().operator(RealtimeArapOperator.bl_idname, text="Run (esc to stop)", icon='IMPORT')
+    layout.row().operator(DeleteMargins.bl_idname, text="DeleteMargins", icon='IMPORT')
       
 
 
@@ -4120,6 +4144,7 @@ _classes = [
 
     PrepareArapOperator,
     PrepareCylinderArapOperator,
+    DeleteMargins,
     RealtimeArapOperator,
     CreateClothSimOperator,
     DirectArapOperator,
