@@ -128,7 +128,7 @@ def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
     # Scale the vertices according to the areas ratio.
     area_ratio = (underlay_bbox_size[0] * underlay_bbox_size[1]) / mesh_area(verts, faces)
     # Scale by * np.sqrt(area_ratio)
-    # verts = center(verts) 
+    verts = center(verts)
 
     # Find the underlay nodes that should be constrained.
     coords = cpp_smocking_solver.bary_coords(x, uv, faces)
@@ -151,13 +151,15 @@ def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
             n = np.cross(v2-v1, v3-v2)
             n = n / np.linalg.norm(n)
             constraint_weight[i] = 0.01
-            constraints[i] = mesh_pos + n * x[i, 2]
+            constraints[i] = mesh_pos + n *abs(x[i, 2]) / np.sqrt(area_ratio)
             continue
         # Get constraint from the location on the triangle.
         constraint_weight[i] = 1
         constraints[i] = l1 * v1 + l2 * v2 + l3 * v3
 
-    return constraints, constraint_weight, delete_verts, area_ratio
+    x = x / np.sqrt(area_ratio)
+
+    return constraints, constraint_weight, delete_verts, x
 
 def get_object_data(obj):
   mesh = obj.data

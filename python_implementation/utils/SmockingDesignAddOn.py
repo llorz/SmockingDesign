@@ -889,11 +889,10 @@ def prepare_cylinder_arap(V, F, pattern_arap, fsp, sg, weight = 1):
     bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_MASS', center='MEDIAN')
     mesh_obj.rotation_euler = selected_obj.rotation_euler
     mesh_obj.location = selected_obj.location
+    mesh_obj.scale = selected_obj.scale
     uv, verts, faces = wrapping.get_object_data(selected_obj)
-  constraints, constraints_weight, delete_verts, area_ratio = wrapping.get_constraints_from_param_bary(V, 
+  constraints, constraints_weight, delete_verts, V = wrapping.get_constraints_from_param_bary(V, 
   anchor_ids, fsp, sg, uv, verts, faces)
-
-  V = V / np.sqrt(area_ratio)
 
   cyl_arap = awrap.ARAP(V.transpose(), F, constraints_weight, constraints)
   return cyl_arap, constraints, delete_verts, V
