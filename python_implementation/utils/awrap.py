@@ -1,4 +1,3 @@
-# Shamefully stolen from https://gist.github.com/jamesgregson/ba72af28c83b3da1968690cd11278829
 from typing import *
 import time
 import numpy as np
@@ -43,18 +42,25 @@ def build_weights_and_adjacency( points: np.ndarray, tris: np.ndarray, L: Option
     return nbrs, wgts, L
 
 class ARAP:
-    def __init__( self, points: np.ndarray, tris: np.ndarray, anchors: List[int], anchor_weight: Optional[float]=10.0, L: Optional[sparse.csc_matrix]=None ):
+    def __init__( self, points: np.ndarray, tris: np.ndarray, constraint_weights: Dict[int, float],
+    constraints: Dict[int, Tuple[float, float, float]]):
         self._pnts    = points.copy()
         self._tris    = tris.copy()
-        self._nbrs, self._wgts, self._L = build_weights_and_adjacency( self._pnts, self._tris, L )
+        self._nbrs, self._wgts, self._L = build_weights_and_adjacency( self._pnts, self._tris )
 
-        self._anchors = list(anchors)
-        self._anc_wgt = anchor_weight
+        self._anchors = list(constraint_weights.keys())
+        # Weight matrix.
         E = sparse.dok_matrix((self.n_pnts,self.n_pnts),dtype=float)
-        for i in anchors:
-            E[i,i] = 1.0
+        for i, weight in constraint_weights.items():
+            E[i,i] = np.sqrt(weight)
         E = E.tocsc()
-        self._solver = spla.factorized( ( self._L.T@self._L + self._anc_wgt*E.T@E).tocsc() )
+        anchors_weights = E.T@E
+        # Right hand side of the constraints.
+        f = np.zeros((self.n_pnts,self.n_dims),dtype=float)
+        for i, v in constraints.items():
+          f[i,:] = v
+        self._cos_rhs = anchors_weights * f
+        self._solver = spla.factorized( ( self._L.T@self._L + anchors_weights).tocsc() )
 
     def get_points(self):
       return self._pnts
@@ -72,13 +78,12 @@ class ARAP:
       return self._anchors
 
     def __call__( self, anchors: Dict[int,Tuple[float,float,float]], num_iters: Optional[int]=4, def_points = None ):
-        con_rhs = self._build_constraint_rhs(anchors)
         R = np.array([np.eye(self.n_dims) for _ in range(self.n_pnts)])
         if def_points is None:
-          def_points = self._solver( self._L.T@self._build_rhs(R) + self._anc_wgt*con_rhs )
+          def_points = self._solver( self._L.T@self._build_rhs(R) + self._cos_rhs )
         for i in range(num_iters):
             R = self._estimate_rotations( def_points.T )
-            def_points = self._solver( self._L.T@self._build_rhs(R) + self._anc_wgt*con_rhs )
+            def_points = self._solver( self._L.T@self._build_rhs(R) + self._cos_rhs )
         return def_points.T
 
     def _estimate_rotations( self, def_pnts: np.ndarray ):
@@ -97,12 +102,3 @@ class ARAP:
         tru_hood = (self._pnts.T[...,None]-np.take( self._pnts, self._nbrs, axis=1 ).transpose((1,0,2)))*self._wgts[:,None,:]
         rhs = np.sum( (R@tru_hood.transpose((0,2,1))[...,None]).squeeze(), axis=1 )
         return rhs
-
-    def _build_constraint_rhs( self, anchors: Dict[int,Tuple[float,float,float]] ):
-        f = np.zeros((self.n_pnts,self.n_dims),dtype=float)
-        # f[self._anchors,:] = np.take( self._pnts, self._anchors, axis=1 ).T
-        for i,v in anchors.items():
-            if i not in self._anchors:
-                raise ValueError('Supplied anchor was not included in list provided at construction!')
-            f[i,:] = v
-        return f

@@ -1,5 +1,6 @@
 import numpy as np
 import importlib
+import itertools
 
 import cpp_smocking_solver
 importlib.reload(cpp_smocking_solver)
@@ -54,6 +55,9 @@ def extract_graph_from_meshgrid(gx, gy):
     # create the grid vertices: array
     V = np.array([gx.flatten().tolist(), gy.flatten().tolist()]).transpose()
     
+    F = np.array(list(itertools.chain.from_iterable(\
+      [(f[[0,1,2]], f[[2,3,0]]) for f in F])))
+
     return F, V
 
 def create_cylinder(flat_size, n=40):
@@ -113,20 +117,30 @@ def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
 
     # Find the underlay nodes that should be constrained.
     coords = cpp_smocking_solver.bary_coords(x, uv, faces)
-    print(coords)
     delete_verts = []
     constraints = {}
+    constraint_weight = {}
     for i in range(len(x)):
         # Pleat/underlay outside of the parameterization domain.
         f, l1, l2, l3 = coords[i]
+        face = faces[int(f)]
         if (f < 0):
             delete_verts.append(i)
             continue
         # Pleat that should not be removed but doesn't have any constraints.
+        # if i not in vids:
+          # continue
         if i not in underlay_anchors:
+            v1, v2, v3 = verts[face[0]], verts[face[1]], verts[face[2]]
+            mesh_pos = l1 * v1 + l2 * v2 + l3 * v3
+            n = np.cross(v2-v1, v3-v2)
+            n = n / np.linalg.norm(n)
+            constraint_weight[i] = 0.01
+            constraints[i] = mesh_pos + n * x[i, 2]
             continue
         # Get constraint from the location on the triangle.
+        constraint_weight[i] = 1
         constraints[i] = l1 * verts[faces[int(f)][0]] + l2 * \
             verts[faces[int(f)][1]] + l3 * verts[faces[int(f)][2]]
 
-    return constraints, delete_verts
+    return constraints, constraint_weight, delete_verts
