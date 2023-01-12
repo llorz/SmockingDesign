@@ -109,11 +109,11 @@ def mesh_area(verts, faces):
 def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
     underlay_anchors = get_underlay_nodes_ids(fsp, vids, sg)
     underlay_locations = x[underlay_anchors]
-    underlay_locations = underlay_locations[:, 0:2]
     # Get bbox of underlay.
-    # underlay_bbox = get_bbox(underlay_locations)
-    underlay_bbox = get_bbox(x[:, 0:2])
-    underlay_locations -= (underlay_bbox[0] + underlay_bbox[1]) / 2
+    if bpy.context.scene.wrap_margins:
+      underlay_bbox = get_bbox(x[:, 0:2])
+    else:
+      underlay_bbox = get_bbox(underlay_locations[:, 0:2])
     x -= np.concatenate([(underlay_bbox[0] + underlay_bbox[1]) / 2, [0]])
     # and uv.
     uv_bbox = get_bbox(uv)
@@ -135,6 +135,8 @@ def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
     delete_verts = []
     constraints = {}
     constraint_weight = {}
+    underlay_weight = bpy.context.scene.arap_underlay_weight
+    pleat_weight = bpy.context.scene.arap_pleat_weight
     for i in range(len(x)):
         # Pleat/underlay outside of the parameterization domain.
         f, l1, l2, l3 = coords[i]
@@ -150,11 +152,11 @@ def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
             mesh_pos = l1 * v1 + l2 * v2 + l3 * v3
             n = np.cross(v2-v1, v3-v2)
             n = n / np.linalg.norm(n)
-            constraint_weight[i] = 0.01
+            constraint_weight[i] = pleat_weight
             constraints[i] = mesh_pos + n *abs(x[i, 2]) / np.sqrt(area_ratio)
             continue
         # Get constraint from the location on the triangle.
-        constraint_weight[i] = 1
+        constraint_weight[i] = underlay_weight
         constraints[i] = l1 * v1 + l2 * v2 + l3 * v3
 
     x = x / np.sqrt(area_ratio)

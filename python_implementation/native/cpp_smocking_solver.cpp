@@ -1,3 +1,8 @@
+#if __INTELLISENSE__
+#undef __ARM_NEON
+#undef __ARM_NEON__
+#endif
+
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 

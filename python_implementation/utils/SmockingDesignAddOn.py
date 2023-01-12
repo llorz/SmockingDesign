@@ -165,7 +165,14 @@ PROPS = [
     ('pleat_variance', bpy.props.FloatProperty(name='height_var', default=1, min=0.0)), 
     ('arap_constraint_weight', bpy.props.FloatProperty(name='contr_weight', default=1, min=0.0)), 
     ('arap_num_iters', bpy.props.IntProperty(name='num_iter', default=100, min=0)),
-    ('object_to_wrap', bpy.props.StringProperty(name="Object to wrap"))
+    ('fine_grid_step', bpy.props.FloatProperty(name='Fine grid step', default=0.15, min=0)),
+    ('object_to_wrap', bpy.props.StringProperty(name="Object to wrap (empty for cylinder)")),
+    ('arap_underlay_weight', bpy.props.FloatProperty(name='Underlay weight', default=1, min=0.0)), 
+    ('arap_pleat_weight', bpy.props.FloatProperty(name='Pleats weight', default=0.01, min=0.0)),
+    ('wrap_margins', bpy.props.BoolProperty(name="Wrap margins", default=True)),
+    ('positive_pleats', bpy.props.BoolProperty(name="Positive pleats", default=False)),
+    ('radial_gathering_radius', bpy.props.FloatProperty(name="Radial gathering radius", default=0.75, min=0.0)),
+    
 
 
         
@@ -623,7 +630,8 @@ class SmockingPattern():
                  pattern_name = "FllPattern", 
                  coll_name=COLL_NAME_FSP,
                  stroke_coll_name = COLL_NAME_FSP_SL,
-                 annotation_text="Full Smocking Pattern"):
+                 annotation_text="Full Smocking Pattern",
+                 is_radial = False):
         # the mesh for the smocking pattern
         self.V = V # can be 2D or 3D vtx positions
         self.F = F
@@ -659,6 +667,7 @@ class SmockingPattern():
         self.annotation_text = annotation_text
         self.coll_name = coll_name
         self.stroke_coll_name = stroke_coll_name
+        self.is_radial = is_radial
 
 
 
@@ -900,9 +909,10 @@ def prepare_cylinder_arap(V, F, pattern_arap, fsp, sg, weight = 1):
 
 def prepare_arap(x, fsp, sg, weight = 1):
   bbox_min, bbox_max = (np.amin(fsp.V, axis=0), np.amax(fsp.V, axis=0))
-  margin_x, margin_y = (0.8, 0.8)
-  grid_size = [int((bbox_max[0] - bbox_min[0] + 2*margin_x) / 0.15),
-               int((bbox_max[1] - bbox_min[1] + 2*margin_y) / 0.15)]
+  margin_x, margin_y = (0.5, 0.5)
+  grid_step = bpy.context.scene.fine_grid_step
+  grid_size = [int((bbox_max[0] - bbox_min[0] + 2*margin_x) / grid_step),
+               int((bbox_max[1] - bbox_min[1] + 2*margin_y) / grid_step)]
   # Create grid.
   [gx, gy]= np.meshgrid( \
     np.linspace(bbox_min[0] - margin_x, bbox_max[0] + margin_x, grid_size[0]),
@@ -918,6 +928,12 @@ def prepare_arap(x, fsp, sg, weight = 1):
   # Find the closest vertex in the grid to each of the vertices in the coarse one.
   vid = [np.argmin(np.linalg.norm(V - p, axis=1)) for p in fsp.V]
   constraints = {vid[i]: x[sg.dict_sp2sg[i]] for i in range(len(vid))}
+  if (fsp.is_radial):
+    inner_radius = np.amin(np.linalg.norm(fsp.V, axis=1))
+    gathering_scale = bpy.context.scene.radial_gathering_radius
+    constraints.update({i: np.array([0, 0, 0]) 
+    for i in range(len(V)) if np.linalg.norm(V[i]) < gathering_scale * inner_radius})
+  # if np.all(fsp.V[i] > bbox_min) and np.all(fsp.V[i] < bbox_max)}
   # Shift by epsilon.
   # for l in range(len(fsp.stitching_points_line_id)):
   #   vtx = fsp.get_vid_in_stitching_line(l)
@@ -927,7 +943,7 @@ def prepare_arap(x, fsp, sg, weight = 1):
 
   # Add z coordinate.
   V3D = np.concatenate((V, np.zeros([V.shape[0], 1])), axis=1)
-  grid_arap = arap.ARAP(V3D.transpose(), F, vid, weight)
+  grid_arap = arap.ARAP(V3D.transpose(), F, constraints.keys(), weight)
   return grid_arap, constraints, F, V
 
 def arap_simulate_smocked_design(x, fsp, sg):
@@ -2917,7 +2933,8 @@ class FSP_confirm_tmp_fsp(Operator):
                  MESH_NAME_FSP, 
                  COLL_NAME_FSP,
                  COLL_NAME_FSP_SL,
-                 "Full Smocking Pattern")
+                 "Full Smocking Pattern",
+                 "Radial" in fsp.pattern_name)
             dt.full_smocking_pattern = fsp_new
 
             _, fsp_loc = update_usp_fsp_location()
@@ -2991,6 +3008,7 @@ class PrepareCylinderArapOperator(Operator):
     sg = dt.smocked_graph
     weight = context.scene.arap_constraint_weight
     g_arap, g_constraints, delete_verts, new_verts = prepare_cylinder_arap(g_V.T, g_F, g_arap, fsp, sg, weight)
+    g_mesh.vertices.foreach_set("co", new_verts.reshape(new_verts.size))
     dt.arap_data[0] = new_verts.T
     dt.arap_data[4] = g_arap
     dt.arap_data[5] = g_constraints
@@ -3066,6 +3084,17 @@ class MagicButtonOperator(Operator):
 
         return {'FINISHED'}
 
+class MagicWrappingOperator(Operator):
+    bl_idname = "objects.magic_wrapping_operator"
+    bl_label = "Simulate"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        bpy.ops.object.prepare_cylinder_arap_operator()
+        bpy.ops.arap.realtime_operator()
+
+        return {'FINISHED'}
+
 def refresh_smocked_graph(self, context):
     if self.if_show_smocked_graph:
         dt = bpy.types.Scene.solver_data
@@ -3126,6 +3155,8 @@ class SG_embed_graph(Operator):
         start_time = time.time()
         res_pleat = np.array(cpp_smocking_solver.embed_pleats(
           X_underlay, X_pleat, C_pleat_eq, w_pleat_var, w_pleat_embed, w_pleat_eq))
+        if (context.scene.positive_pleats):
+          res_pleat[:, 2] = abs(res_pleat[:, 2])
         msg = 'optimization: embed the underlay graph: %f second' % (time.time() - start_time)
         bpy.types.Scene.sl_props.runtime_log.append(msg)
 
@@ -3342,6 +3373,7 @@ class ArapGridPanel(bpy.types.Panel):
     box = layout.box()
     box.row().prop(context.scene, 'arap_constraint_weight')
     box.row().prop(context.scene, 'arap_num_iters')
+    box.row().prop(context.scene, 'fine_grid_step')
 
     layout.row().operator(PrepareArapOperator.bl_idname, text="Prepare", icon='IMPORT')
     layout.row().operator(RealtimeArapOperator.bl_idname, text="Run (esc to stop)", icon='IMPORT')
@@ -3653,6 +3685,13 @@ class FastSmock_panel(bpy.types.Panel):
         row = layout.row()
         row.alert=context.scene.if_highlight_button
         row.operator(MagicButtonOperator.bl_idname, text="Run Simulation", icon='MOD_CLOTH')
+        
+        layout.label(text= "Object to wrap (empty for cylinder)")
+        layout.row().prop_search(context.scene, "object_to_wrap", bpy.data, "objects", text="")
+        row = layout.row()
+        row.alert=context.scene.if_highlight_button
+        row.operator(MagicWrappingOperator.bl_idname, text="Wrap object", icon='MOD_SHRINKWRAP')
+        layout.row().operator(DeleteMargins.bl_idname, text="Delete margins", icon='BRUSH_CURVES_CUT')
         layout.row()
 
 
@@ -3681,12 +3720,22 @@ class Parameter_panel(bpy.types.Panel):
         box.row().prop(context.scene, 'pleat_eq')
         box.row().prop(context.scene, 'pleat_max_embed')
         box.row().prop(context.scene, 'pleat_variance')
+        box.row().prop(context.scene, 'positive_pleats')
 
 
         layout.label(text="ARAP parameters")
         box = layout.box()
         box.row().prop(context.scene, 'arap_constraint_weight')
         box.row().prop(context.scene, 'arap_num_iters')
+        box.row().prop(context.scene, 'fine_grid_step')
+        box.row().prop(context.scene, 'radial_gathering_radius')
+
+        layout.label(text="Wrapping")
+        box = layout.box()
+        box.row().prop(context.scene, 'arap_underlay_weight')
+        box.row().prop(context.scene, 'arap_pleat_weight')
+        box.row().prop(context.scene, 'wrap_margins')
+        box.row().prop_search(context.scene, "object_to_wrap", bpy.data, "objects")
 
 
         layout.label(text="Visualization")
@@ -3763,7 +3812,7 @@ _classes = [
 
 
     # Debug.
-    debug_panel,
+    # debug_panel,
     # Unit grid panel.
     UnitGrid_panel,
 
@@ -3821,7 +3870,7 @@ _classes = [
     SG_embed_graph,
     
     MagicButtonOperator,
-
+    MagicWrappingOperator,
     
 
     PrepareArapOperator,

@@ -31,11 +31,8 @@ SET ( CMAKE_CXX_FLAGS "-Xlinker -undefined -Xlinker dynamic_lookup  -fPIC ${CMAK
 # The proper way to handle warnings (ignore them).
 add_definitions(-w)
 
-# Cmake fails to properly add the libraries... add them manually.
 find_package(OpenMP REQUIRED)
 find_package(Eigen3 REQUIRED NO_MODULE)
-# target_include_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/libomp/15.0.6/include")
-# target_link_directories(${PROJECT_NAME} PUBLIC "/opt/homebrew/Cellar/libomp/15.0.6/lib")
 
 target_link_libraries(${PROJECT_NAME} PRIVATE OpenMP::OpenMP_CXX Eigen3::Eigen)
 set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
