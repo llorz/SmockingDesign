@@ -60,6 +60,7 @@ class ARAP:
         for i, v in constraints.items():
           f[i,:] = v
         self._cos_rhs = anchors_weights * f
+        self._constraints = constraints
         self._solver = spla.factorized( ( self._L.T@self._L + anchors_weights).tocsc() )
 
     def get_points(self):

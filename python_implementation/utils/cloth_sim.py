@@ -59,7 +59,7 @@ def get_stitching_lines_in_new_grid(fsp, vid):
       edges.append((vid[stitching_vertices[i]], vid[stitching_vertices[i + 1]]))
   return edges
 
-def create_cloth_mesh(fsp, sg):
+def create_cloth_mesh(fsp, add_text_to_scene):
   F, V = get_fine_grid(fsp)
   F = np.array(list(itertools.chain.from_iterable(\
       [(f[[0,1,2]], f[[2,3,0]]) for f in F])))
@@ -77,7 +77,7 @@ def create_cloth_mesh(fsp, sg):
   
   # Create object and collection
   obj = bpy.data.objects.new('cloth_sim_obj', mesh)
-  obj.location = (0, 0, 4)
+  obj.location = (np.max(fsp.V[:, 0]), np.max(fsp.V[:, 1]) + 2, 0)
   obj.data.materials.append(bpy.data.materials['Fabric035'])
   for f in obj.data.polygons:
     f.use_smooth = True
@@ -93,11 +93,17 @@ def create_cloth_mesh(fsp, sg):
   bpy.context.view_layer.objects.active = obj
   bpy.ops.object.mode_set(mode='EDIT')
   bm = bmesh.from_edit_mesh(obj.data)
-  bm.verts.ensure_lookup_table() # Required?
+  bm.verts.ensure_lookup_table()
   for e in stitching_edges:
     bm.edges.new((bm.verts[e[0]], bm.verts[e[1]]))
 
   bpy.ops.object.mode_set(mode='OBJECT')
+
+  add_text_to_scene(body="Blender cloth simulation", 
+                          location=np.array(obj.location) + (np.max(fsp.V[:, 0]) * 0.25, np.max(fsp.V[:, 1]) + 1, 0), 
+                          scale=(1,1,1),
+                          obj_name="cloth_sim_annotation",
+                          coll_name="cloth_sim_collection")
 
   return obj
   
