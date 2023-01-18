@@ -1,3 +1,8 @@
+#if __INTELLISENSE__
+#undef __ARM_NEON
+#undef __ARM_NEON__
+#endif
+
 #include "../include/SparseMapMatrix.h"
 
 #include <iostream>
@@ -12,7 +17,7 @@ SparseMapMatrix::SparseMapMatrix(const Eigen::SparseMatrix<double>& mat): n_rows
 n_cols(mat.cols()) {
   for (int k=0; k<mat.outerSize(); ++k) {
     for (typename Eigen::SparseMatrix<double>::InnerIterator it(mat,k); it; ++it) {
-      values[it.col()][it.row()] = it.value();
+      values[it.row()][it.col()] = it.value();
     }
   }
 }
@@ -22,22 +27,38 @@ SparseMapMatrix::SparseMapMatrix(SparseMapMatrix&& other) noexcept = default;
 SparseMapMatrix& SparseMapMatrix::operator=(SparseMapMatrix&& other) = default;
 
 SparseMapMatrix& SparseMapMatrix::operator+=(const SparseMapMatrix& other) {
-  SPARSE_MATRIX_ITER(other, operator()(i, j) += val;)
+  for (const auto& [i, row] : other.values) {
+    for (const auto& [j, val] : row) {
+      values[i][j] += val;
+    }
+  }
   return *this;
 }
 
 SparseMapMatrix& SparseMapMatrix::operator*=(double scalar) {
-  SPARSE_MATRIX_ITER((*this), val *= scalar;)
+  for (auto& [i, row] : values) {
+    for (auto& [j, val] : row) {
+      val *= scalar;
+    }
+  }
   return *this;
 }
 
 SparseMapMatrix& SparseMapMatrix::operator/=(double scalar) {
-  SPARSE_MATRIX_ITER((*this), val /= scalar;)
+  for (auto& [i, row] : values) {
+    for (auto& [j, val] : row) {
+      val /= scalar;
+    }
+  }
   return *this;
 }
 
 SparseMapMatrix& SparseMapMatrix::operator-=(const SparseMapMatrix& other) {
-  SPARSE_MATRIX_ITER(other, operator()(i, j) -= val;)
+  for (const auto& [i, row] : other.values) {
+    for (const auto& [j, val] : row) {
+      values[i][j] -= val;
+    }
+  }
   return *this;
 }
 
@@ -46,13 +67,8 @@ std::ostream& operator<<(std::ostream& s, const SparseMapMatrix& mat) {
   return s;
 }
 
-SparseMapMatrix::RowAccess::RowAccess(SparseMapMatrix* mat, int row): mat(mat), row(row) {}
-double& SparseMapMatrix::RowAccess::operator[](int col) {
-  return mat->operator()(row, col);
-}
-
-SparseMapMatrix::RowAccess SparseMapMatrix::operator[](int row) {
-  return RowAccess(this, row);
+std::map<int, double>& SparseMapMatrix::operator[](int row) {
+  return values[row];
 }
 
 int SparseMapMatrix::rows() const {
@@ -71,17 +87,19 @@ int SparseMapMatrix::nnz() const {
 }
 
 double& SparseMapMatrix::operator()(int i, int j) {
-  return values[j][i];
+  return values[i][j];
 }
 
 double& SparseMapMatrix::insert(int i, int j) {
-  return values[j][i];
+  return values[i][j];
 }
 
 Eigen::MatrixXd SparseMapMatrix::toDense() const {
   Eigen::MatrixXd res = Eigen::MatrixXd::Zero(n_rows, n_cols);
-  for (const auto& [i, j, val] : *this) {
-    res(i, j) = val;
+  for (const auto& [i, row] : values) {
+    for (const auto& [j, val] : row) {
+      res(i, j) = val;
+    }
   }
   return res;
 }
@@ -130,13 +148,19 @@ SparseMapMatrix operator-(SparseMapMatrix&& first, SparseMapMatrix&& other) {
 SparseMapMatrix operator*(const SparseMapMatrix& a,
                         const SparseMapMatrix& b) {
   SparseMapMatrix res(a.n_rows, b.n_cols);
-  SPARSE_MATRIX_ITER(b, 
-    const auto& a_col = a.values.find(i);
-    if (a_col == a.values.end()) { continue; }
-    for (const auto& [ii, a_val] : a_col->second) {
-      res(ii, j) += a_val * val;
-    }
-  )
+  // res[i, j] = sum_k(a_{i,k} * b_{k, j}).
+  // TODO: Check which one is faster.
+  // SPARSE_MATRIX_ITER(i, k, a_val, a, 
+  for (const auto& [i, k, a_val] : a) {
+      // Row 'k' of matrix 'b'.
+      const auto& sec_row = b.values.find(k);
+      if (sec_row == b.values.end()) { continue; }
+
+      for (const auto& [j, b_val] : sec_row->second) {
+        res[i][j] += a_val * b_val;
+      }
+  }
+  // );
   return res;
 }
 
@@ -164,7 +188,11 @@ SparseMapMatrix operator/(SparseMapMatrix&& first, double scalar) {
 
 SparseMapMatrix SparseMapMatrix::transpose() const {
   SparseMapMatrix res(n_cols, n_rows);
-  SPARSE_MATRIX_ITER((*this), res(j, i) = val;)
+  for (const auto& [i, row] : values) {
+    for (const auto& [j, val] : row) {
+      res[j][i] = val;
+    }
+  }
   return res;
 }
 
@@ -199,8 +227,8 @@ bool SparseMapMatrix::Iterator::operator==(const Iterator& other) const {
 bool SparseMapMatrix::Iterator::operator!=(const Iterator& other) const {
   return row_iter != other.row_iter || col_iter != other.col_iter;
 }
-std::tuple<int, int, double&> SparseMapMatrix::Iterator::operator*() const {
-  return std::tie(col_iter->first, row_iter->first, col_iter->second);
+std::tuple<int, int, double> SparseMapMatrix::Iterator::operator*() const {
+  return {row_iter->first, col_iter->first, col_iter->second};
 }
 
 // Const iterator
@@ -235,7 +263,7 @@ bool SparseMapMatrix::ConstIterator::operator!=(const ConstIterator& other) cons
   return row_iter != other.row_iter || col_iter != other.col_iter;
 }
 std::tuple<int, int, double> SparseMapMatrix::ConstIterator::operator*() const {
-  return {col_iter->first, row_iter->first, col_iter->second};
+  return {row_iter->first, col_iter->first, col_iter->second};
 }
 
 }  // namespace SparseAD

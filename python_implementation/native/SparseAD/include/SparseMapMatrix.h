@@ -1,11 +1,12 @@
+
 #pragma once
 #include <unordered_map>
 #include <Eigen/Eigen>
 #include <map>
 #include <tuple>
 
-#define SPARSE_MATRIX_ITER(m, code) for (auto& [j, col] : m.vals()) {\
-  for (auto& [i, val] : col) {\
+#define SPARSE_MATRIX_ITER(i, j, val, m, code) for (auto& [i, row] : m.vals()) {\
+  for (auto& [j, val] : row) {\
     code \
   }\
 }
@@ -13,7 +14,7 @@
 namespace SparseAD {
 
 class SparseMapMatrix {
-public: 
+public:
   SparseMapMatrix(int n_rows, int n_cols);
   SparseMapMatrix(const Eigen::SparseMatrix<double>& mat);
   SparseMapMatrix(SparseMapMatrix&&) noexcept;
@@ -61,14 +62,7 @@ public:
   friend SparseMapMatrix operator*(double scalar, const SparseMapMatrix& first);
   friend SparseMapMatrix operator*(double scalar, SparseMapMatrix&& first);
 
-  struct RowAccess {
-    SparseMapMatrix* mat;
-    int row;
-    RowAccess (SparseMapMatrix* mat, int row);
-    double& operator[](int col);
-  };
-
-  RowAccess operator[](int row);
+  std::map<int, double>& operator[](int row);
 
   // Iterators stuff.
   struct Iterator {
@@ -76,12 +70,12 @@ public:
     const Iterator& operator++();
     bool operator==(const Iterator& other) const;
     bool operator!=(const Iterator& other) const;
-    std::tuple<int, int, double&> operator*() const;
+    std::tuple<int, int, double> operator*() const;
 
     std::map<int, std::map<int, double>>::iterator row_iter;
     std::map<int, double>::iterator col_iter;
     std::map<int, std::map<int, double>>& values;
-  };
+  }; 
   struct ConstIterator {
     ConstIterator(const std::map<int, std::map<int, double>>& values, bool begin);
     const ConstIterator& operator++();

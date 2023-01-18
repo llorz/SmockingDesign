@@ -1,3 +1,8 @@
+#if __INTELLISENSE__
+#undef __ARM_NEON
+#undef __ARM_NEON__
+#endif
+
 #include "../include/Utils.h"
 
 #include <omp.h>
@@ -30,7 +35,9 @@ double f = 0.0;
         grad(row) += val2;
       }
       for (const auto& [row, col, val2] : val.hessian()) {
-        triplets.push_back(Eigen::Triplet<double>(row, col, val2));
+        if (row >= col) {
+          triplets.push_back(Eigen::Triplet<double>(row, col, val2));
+        }
       }
     }
 

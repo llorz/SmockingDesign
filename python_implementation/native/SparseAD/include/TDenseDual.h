@@ -48,9 +48,11 @@ class TDenseDual {
 
   // Operators.
   TDenseDual& operator*=(const TDenseDual& b) {
-    Eigen::MatrixXd grad_b_grad_t = _grad * b._grad.transpose();
+    Eigen::Matrix<double, k, k> grad_b_grad_t = _grad * b._grad.transpose();
     _hessian = b._val * _hessian + grad_b_grad_t + grad_b_grad_t.transpose() +
                _val * b._hessian;
+    // _hessian = (b._val * _hessian + _val * b._hessian);
+    // _hessian.template selfadjointView<Eigen::Lower>().rankUpdate(_grad, b._grad);
     _grad = b._val * _grad + _val * b._grad;
     _val *= b._val;
     return *this;
@@ -99,6 +101,7 @@ class TDenseDual {
     _val = val;
     // _hessian = hessian * _grad * _grad.transpose() + grad * _hessian;
     _hessian *= grad;
+    // _hessian.template selfadjointView<Eigen::Lower>().rankUpdate(_grad, hessian);
     _hessian += hessian * _grad * _grad.transpose();
     _grad *= grad;
     return *this;
@@ -276,9 +279,11 @@ class TDenseDual {
     a.chain_this(sqrt_a, 0.5 / sqrt_a, -0.25 / (sqrt_a * a._val));
     return a;
   }
-  friend TDenseDual sqr(const TDenseDual& a) { return a * a; }
+  friend TDenseDual sqr(const TDenseDual& a) { 
+    return a.chain(a._val * a._val, 2*a._val, 2);
+    }
   friend TDenseDual sqr(TDenseDual&& a) {
-    a *= a;
+    a.chain_this(a._val*a._val, 2 * a._val, 2);
     return a;
   }
   friend TDenseDual abs(const TDenseDual& a) { return a.chain(a._val, a._val >= 0? 1 : -1, 0); }
@@ -322,6 +327,9 @@ class TDenseDual {
     const double val = std::exp(a._val);
     a.chain_this(val, val, val);
     return a;
+  }
+  friend bool isfinite(const TDenseDual& a) {
+    return true;
   }
 
   // ----------------------- Comparisons -----------------------

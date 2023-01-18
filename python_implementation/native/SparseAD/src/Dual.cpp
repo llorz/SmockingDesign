@@ -1,3 +1,8 @@
+#if __INTELLISENSE__
+#undef __ARM_NEON
+#undef __ARM_NEON__
+#endif
+
 #include "../include/Dual.h"
 
 #include "../include/HessianProjection.h"
@@ -286,21 +291,12 @@ Dual sqrt(Dual&& a) {
   a.chain_this(sqrt_a, 0.5 / sqrt_a, -0.25 / (sqrt_a * a._val));
   return a;
 }
-Dual sqr(const Dual& a) { return a * a; }
+Dual sqr(const Dual& a) { 
+  // return a * a; 
+  return a.chain(a._val*a._val, 2 * a._val, 2);
+}
 Dual sqr(Dual&& a) {
-  a *= a;
-  return a;
-}
-
-Dual abs(const Dual& a) { 
-  return (a >= 0)? a.chain(a.val(), 1.0, 0.0) : a.chain(-a.val(), -1.0, 0.0);
-}
-Dual abs(Dual&& a) {
-  if (a >= 0) {
-    a.chain_this(a._val, 1.0, 0.0);
-  } else {
-    a.chain_this(-a._val, -1.0, 0.0);
-  }
+  a.chain_this(a._val*a._val, 2 * a._val, 2);
   return a;
 }
 

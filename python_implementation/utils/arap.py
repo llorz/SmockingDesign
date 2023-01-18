@@ -28,10 +28,7 @@ def build_cotan_laplacian( points: np.ndarray, tris: np.ndarray ):
     return L
 
 def build_weights_and_adjacency( points: np.ndarray, tris: np.ndarray, L: Optional[sparse.csc_matrix]=None ):
-    start_time = time.time()
     L = L if L is not None else build_cotan_laplacian( points, tris )
-    print("Took " + str(time.time() - start_time) + " seconds for laplacian")
-    start_time = time.time()
     n_pnts, n_nbrs = (points.shape[1], L.getnnz(axis=0).max()-1)
     nbrs = np.ones((n_pnts,n_nbrs),dtype=int)*np.arange(n_pnts,dtype=int)[:,None]
     wgts = np.zeros((n_pnts,n_nbrs),dtype=float)
@@ -43,8 +40,6 @@ def build_weights_and_adjacency( points: np.ndarray, tris: np.ndarray, L: Option
         nbrs[idx,:len(indices)] = indices
         wgts[idx,:len(indices)] = -values
 
-    print("Took " + str(time.time() - start_time) + " For the neighbors and weights ")
-
     return nbrs, wgts, L
 
 class ARAP:
@@ -53,17 +48,13 @@ class ARAP:
         self._tris    = tris.copy()
         self._nbrs, self._wgts, self._L = build_weights_and_adjacency( self._pnts, self._tris, L )
 
-        start_time = time.time()
         self._anchors = list(anchors)
         self._anc_wgt = anchor_weight
         E = sparse.dok_matrix((self.n_pnts,self.n_pnts),dtype=float)
         for i in anchors:
             E[i,i] = 1.0
         E = E.tocsc()
-        print("Took " + str(time.time() - start_time) + " seconds for constraints matrix")
-        start_time = time.time()
         self._solver = spla.factorized( ( self._L.T@self._L + self._anc_wgt*E.T@E).tocsc() )
-        print("Took " + str(time.time() - start_time) + " seconds for factorization")
 
     def get_points(self):
       return self._pnts

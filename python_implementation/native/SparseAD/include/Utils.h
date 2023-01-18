@@ -11,7 +11,7 @@
 #include "TDenseDual.h"
 
 #pragma omp declare reduction (merge : std::vector<Eigen::Triplet<double>> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
-#define PARALLEL_ADD(x, i, num, code) SparseAD::parallel_reduce(num, x, [&](int i) -> typename SparseAD::typeMap<T>::type { \
+#define PARALLEL_ADD(x, i, num, code) SparseAD::parallel_reduce(num, x, [&](int i) -> SparseAD::typeMap<T>::type { \
 code \
 });
 
@@ -47,15 +47,21 @@ class LocalDualFactory {
     local_to_global.reserve(k);
   }
 
+  using Type = TDenseDual<k>;
+
   TDenseDual<k> operator()(int i) {
-    auto local_index = global_to_local.find(i);
-    if (local_index == global_to_local.end()) {
+
+    auto local_index = std::find(local_to_global.begin(), local_to_global.end(), i);
+    if (local_index == local_to_global.end()) {
+    // auto local_index = global_to_local.find(i);
+    // if (local_index == global_to_local.end()) {
+      // std::cout << "Index: " << i << std::endl;
       assert(local_to_global.size() < k);
-      global_to_local[i] = local_to_global.size();
+      // global_to_local[i] = local_to_global.size();
       local_to_global.push_back(i);
       return TDenseDual<k>(cur(i), local_to_global.size() - 1);
     }
-    return TDenseDual<k>(cur(i), local_index->second);
+    return TDenseDual<k>(cur(i), *local_index);
   }
 
   TDenseDual<k> operator()(int i, int j) {
@@ -72,12 +78,12 @@ class LocalDualFactory {
     return result;
   }
 
-  // LocalResult get(const TDenseDual<k>& d) {
-  //   const auto& [local_f, local_grad, local_hessian] = (Tup)d;
-  //   LocalResult res {.f = local_f, .grad = local_grad, .hessian = local_hessian,
-  //   .local_to_global = local_to_global};
-  //   return res;
-  // }
+  LocalResult get(const TDenseDual<k>& d) {
+    const auto& [local_f, local_grad, local_hessian] = (Tup)d;
+    LocalResult res {.f = local_f, .grad = local_grad, .hessian = local_hessian,
+    .local_to_global = std::move(local_to_global)};
+    return res;
+  }
   LocalResult get(TDenseDual<k>&& d) {
     LocalResult res {.f = d.val(), .grad = std::move(d.grad()),
      .hessian = std::move(d.hessian()),
@@ -122,10 +128,15 @@ EnergyFunc sparse_func(int num, LocalEnergyFunction<k> delegate,
         grad(local_vars.local_to_global[j]) += local_grad(j);
       }
       for (int j = 0; j < local_vars.local_to_global.size(); j++) {
-        for (int h = 0; h < local_vars.local_to_global.size(); h++) {
-          triplets.push_back(Eigen::Triplet<double>(
-              local_vars.local_to_global[j], local_vars.local_to_global[h],
-              local_hessian(j, h)));
+        for (int h = 0; h <= j; h++) {
+          int gj = local_vars.local_to_global[j], gh = local_vars.local_to_global[h];
+          double val = local_hessian(j, h);
+          // Only fill the lower triangle of the hessian.
+          if (gj <= gh) {
+            triplets.push_back(Eigen::Triplet<double>(gh, gj, val));
+          } else {
+            triplets.push_back(Eigen::Triplet<double>(gj, gh, val));
+          }
         }
       }
     }

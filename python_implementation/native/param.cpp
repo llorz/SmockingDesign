@@ -6,6 +6,7 @@
 #include "param.h"
 
 #include <Eigen/Eigen>
+#include "SparseAD/include/Problem.h"
 
 std::vector<Eigen::Matrix3d> get_barcy_coords_projection(
     const std::vector<std::vector<double>>& uv,
@@ -47,5 +48,12 @@ std::vector<std::vector<double>> bary_coords(
   for (int i = 0; i < verts.size(); i++) {
     result[i] = find_bary_coordinates(verts[i], bary_coords_proj);
   }
+  return result;
+}
+
+std::vector<std::vector<double>> rigid_param(const std::vector<std::vector<double>>& verts,
+    const std::vector<std::vector<double>>& uv,
+    const std::vector<std::vector<int>>& faces) {
+  std::vector<std::vector<double>> result;
   return result;
 }

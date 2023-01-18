@@ -107,7 +107,7 @@ MESH_NAME_P1 = 'Pattern01'
 MESH_NAME_P2 = 'Pattern02'
 
 
-
+arap_start_time = None
 # global variables from user input
 
 PROPS = [
@@ -115,6 +115,7 @@ PROPS = [
     ('if_highlight_button', bpy.props.BoolProperty(name="highlight buttons", default=True)),
 
     # fast smocking
+    # TODO: Revert
     # ('path_import', bpy.props.StringProperty(subtype='FILE_PATH', name='File')),
     ('path_import', bpy.props.StringProperty(name='Pattern')),
     ('path_import_fullpattern', bpy.props.StringProperty(subtype='FILE_PATH', name='File', default='/tmp/my_pattern_name.obj')),
@@ -127,14 +128,14 @@ PROPS = [
     ('if_show_embedded_graph', bpy.props.BoolProperty(name="embedded graph", default=True)),
     
     # for unit grid
-    ('base_x', bpy.props.IntProperty(name='X', default=3, min=1, max=20)),
-    ('base_y', bpy.props.IntProperty(name='Y', default=3, min=1, max=20)),
+    ('base_x', bpy.props.IntProperty(name='X', default=3, min=1, max=30)),
+    ('base_y', bpy.props.IntProperty(name='Y', default=3, min=1, max=30)),
     # import/export stitching lines
     ('path_export', bpy.props.StringProperty(subtype='DIR_PATH', name='Path',default='/tmp/')),
     ('filename_export', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
     # for full grid (full smocking pattern)
-    ('num_x', bpy.props.IntProperty(name='X: repeat', default=3, min=1, max=20)),
-    ('num_y', bpy.props.IntProperty(name='Y: repeat', default=3, min=1, max=20)),
+    ('num_x', bpy.props.FloatProperty(name='X: repeat', default=3, min=1, max=50)),
+    ('num_y', bpy.props.FloatProperty(name='Y: repeat', default=3, min=1, max=50)),
     ('shift_x', bpy.props.IntProperty(name='X: shift', default=0, min=-10, max=10)),
     ('shift_y', bpy.props.IntProperty(name='Y: shift', default=0, min=-10, max=10)),
 #    ('type_tile', bpy.props.EnumProperty(items = [("regular", "regular", "tile in a regular grid"), ("radial", "radial", "tile in a radial grid")], name="Type", default="regular")),
@@ -147,12 +148,15 @@ PROPS = [
     ('filename_export_fullpattern', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
     ('export_format', bpy.props.EnumProperty(items = [(".obj", "OBJ", ".obj"), (".off", "OFF", ".off")], name="Format", default=".obj")),
     # FSP: combine two patterns
-    ('file_import_p1', bpy.props.StringProperty(subtype='FILE_PATH', name='P1 path')),
-    ('file_import_p2', bpy.props.StringProperty(subtype='FILE_PATH', name='P2 path')),
+    # TODO: Revert
+    ('file_import_p1', bpy.props.StringProperty(name='P1 name')),
+    ('file_import_p2', bpy.props.StringProperty(name='P2 name')),
+    # ('file_import_p1', bpy.props.StringProperty(subtype='FILE_PATH', name='P1 path')),
+    # ('file_import_p2', bpy.props.StringProperty(subtype='FILE_PATH', name='P2 path')),
     ('combine_direction', bpy.props.EnumProperty(items = [("x", "x axis", "along x axis", '',0), 
                                                           ("y", "y axis", "along y axis",'',1)], 
                                                           name="Combine", default="x")),
-    ('combine_space', bpy.props.IntProperty(name='Spacing', default=2, min=1, max=20)),
+    ('combine_space', bpy.props.FloatProperty(name='Spacing', default=2, min=1, max=20)),
     ('combine_shift', bpy.props.IntProperty(name='Shift', default=0, min=-20, max=20)),
     
     ('fsp_edit_selection', bpy.props.EnumProperty(items= (('V', 'VERT', 'move vertices', 'VERTEXSEL', 0),    
@@ -165,7 +169,7 @@ PROPS = [
     # Embedding
     ('pleat_eq', bpy.props.FloatProperty(name='w_eq', default=1e3, min=0.0)), 
     ('pleat_max_embed', bpy.props.FloatProperty(name='w_embed', default=1, min=0.0)), 
-    ('pleat_embed_fancy_init', bpy.props.BoolProperty(name='fancy_pleat_init', default=False)), 
+    ('pleat_embed_fancy_init', bpy.props.BoolProperty(name='fancy_pleat_init', default=True)), 
     ('pleat_variance', bpy.props.FloatProperty(name='w_height', default=1, min=0.0)), 
     ('arap_constraint_weight', bpy.props.FloatProperty(name='w_constraint', default=1, min=0.0)), 
     ('arap_num_iters', bpy.props.IntProperty(name='n_iter', default=100, min=0)),
@@ -176,7 +180,10 @@ PROPS = [
     ('wrap_margins', bpy.props.BoolProperty(name="Wrap margins", default=True)),
     ('positive_pleats', bpy.props.BoolProperty(name="Positive pleats", default=False)),
     ('radial_gathering_radius', bpy.props.FloatProperty(name="r_gather", default=0.75, min=0.0)),
-    ('arap_margin', bpy.props.FloatProperty(name='margin', default=0.5, min=0.0)),
+    ('arap_margin_top', bpy.props.FloatProperty(name='margin_top', default=0.5, min=0.0)),
+    ('arap_margin_bottom', bpy.props.FloatProperty(name='margin_bottom', default=0.5, min=0.0)),
+    ('arap_margin_left', bpy.props.FloatProperty(name='margin_left', default=0.5, min=0.0)),
+    ('arap_margin_right', bpy.props.FloatProperty(name='margin_right', default=0.5, min=0.0)),
     
 
 
@@ -446,20 +453,27 @@ class SmockedGraph():
 
     def plot_embed(self, 
                    X,
-                   location=(0,-10)):
+                   location=(0,0)):
         
         construct_object_from_mesh_to_scene(X, [], MESH_NAME_SG_EMBED, COLL_NAME_SG, self.E)
         mesh = bpy.data.objects[MESH_NAME_SG_EMBED]
-        
+        fsp_obj = bpy.data.objects[MESH_NAME_FSP]
+
+        shrink_left = np.min([v.co[0] for v in mesh.data.vertices]) -\
+           np.min([v.co[0] for v in fsp_obj.data.vertices])
+        shift_x = np.max([v.co[0] for v in fsp_obj.data.vertices]) + fsp_obj.location[0] 
+        margin_lr = (bpy.context.scene.arap_margin_left, bpy.context.scene.arap_margin_right)
+        margin_tb = (bpy.context.scene.arap_margin_top, bpy.context.scene.arap_margin_bottom)
+
         mesh.scale = (1, 1, 1)
-        mesh.location = (location[0]-min(X[:,0]), location[1]-max(X[:,1])+min(X[:,1])-LAYOUT_Y_SHIFT - 1, 0)
+        mesh.location = (shrink_left + margin_lr[0] + shift_x - min(X[:,0]), -max(X[:,1])-LAYOUT_Y_SHIFT - 1, 0)
         mesh.show_axis = False
         mesh.show_wire = True
         mesh.display_type = 'WIRE'
         select_one_object(mesh)
 
 
-        text_loc = (location[0], location[1]-LAYOUT_Y_SHIFT+LAYOUT_TEXT, 0)
+        text_loc = (shift_x + LAYOUT_TEXT*3 , -LAYOUT_Y_SHIFT+LAYOUT_TEXT, 0)
         add_text_to_scene(body="Smocked graph (optimized)", 
                           location=text_loc, 
                           scale=(1,1,1),
@@ -627,7 +641,7 @@ class UnitSmockingPattern():
 #----------------------- Smocking Pattern Class --------------------------------
 
 class SmockingPattern():
-    """Full Smocking Pattern"""
+    """Full smocking pattern"""
     def __init__(self, V, F, E,
                  stitching_points,
                  stitching_points_line_id,
@@ -636,7 +650,7 @@ class SmockingPattern():
                  pattern_name = "FllPattern", 
                  coll_name=COLL_NAME_FSP,
                  stroke_coll_name = COLL_NAME_FSP_SL,
-                 annotation_text="Full Smocking Pattern",
+                 annotation_text="Full smocking pattern",
                  is_radial = False):
         # the mesh for the smocking pattern
         self.V = V # can be 2D or 3D vtx positions
@@ -796,7 +810,7 @@ class SmockingPattern():
             
     
     def info(self):
-        print('\n------------------- Info: Full Smocking Pattern -------------------')
+        print('\n------------------- Info: Full smocking pattern -------------------')
         print('No. vertices: ' + str(len(self.V)))
         print('No. faces: ' + str(len(self.F)))
         print('No. stitching lines: ' + str(max(self.stitching_points_line_id)+1))
@@ -847,8 +861,12 @@ class RealtimeArapOperator(bpy.types.Operator):
     _timer = None
 
     def modal(self, context, event):
+        global arap_start_time
         if event.type in {'ESC'}:
             self.cancel(context)
+            cur_time = time.time()
+            print("Arap took " + str(cur_time - arap_start_time) + " seconds")
+            arap_start_time = None
             return {'CANCELLED'}
 
         if event.type == 'TIMER':
@@ -863,6 +881,9 @@ class RealtimeArapOperator(bpy.types.Operator):
             dt.arap_data[0] = g_V
             dt.arap_data[3] = g_iters
             if (g_iters == 0):
+              cur_time = time.time()
+              print("Arap took " + str(cur_time - arap_start_time) + " seconds")
+              arap_start_time = None
               return {'FINISHED'}
             self._timer = wm.event_timer_add(0.01, window=context.window)
 
@@ -915,14 +936,15 @@ def prepare_cylinder_arap(V, F, pattern_arap, fsp, sg, weight = 1):
 
 def prepare_arap(x, fsp, sg, weight = 1):
   bbox_min, bbox_max = (np.amin(fsp.V, axis=0), np.amax(fsp.V, axis=0))
-  margin = bpy.context.scene.arap_margin
+  margin_lr = (bpy.context.scene.arap_margin_left, bpy.context.scene.arap_margin_right)
+  margin_tb = (bpy.context.scene.arap_margin_top, bpy.context.scene.arap_margin_bottom)
   grid_step = bpy.context.scene.fine_grid_step
-  grid_size = [int((bbox_max[0] - bbox_min[0] + 2*margin) / grid_step),
-               int((bbox_max[1] - bbox_min[1] + 2*margin) / grid_step)]
+  grid_size = [int((bbox_max[0] - bbox_min[0] + np.sum(margin_lr)) / grid_step),
+               int((bbox_max[1] - bbox_min[1] + np.sum(margin_tb)) / grid_step)]
   # Create grid.
   [gx, gy]= np.meshgrid( \
-    np.linspace(bbox_min[0] - margin, bbox_max[0] + margin, grid_size[0]),
-    np.linspace(bbox_min[1] - margin, bbox_max[1] + margin, grid_size[1]))
+    np.linspace(bbox_min[0] - margin_lr[0], bbox_max[0] + margin_lr[1], grid_size[0]),
+    np.linspace(bbox_min[1] - margin_tb[0], bbox_max[1] + margin_tb[1], grid_size[1]))
   
   # Create graph from grid. 
   F, V, _ = extract_graph_from_meshgrid(gx, gy, True)
@@ -1519,7 +1541,7 @@ def read_obj_to_fsp(file_name,
                     pattern_name = "FllPattern", 
                     coll_name=COLL_NAME_FSP,
                     stroke_coll_name = COLL_NAME_FSP_SL,
-                    annotation_text="Full Smocking Pattern"):       
+                    annotation_text="Full smocking pattern"):       
     V, F, E, all_sp_lid, all_sp_vid = [], [], [], [], []
 
     file = open(file_name, 'r')
@@ -1964,6 +1986,7 @@ def initialize_data():
     if "sun" in bpy.data.objects:
       bpy.data.objects.remove(bpy.data.objects["sun"])
     light_object = bpy.data.objects.new(name="sun", object_data=light_data)
+    light_object.location = (-100, -100, -100)
     light_object.rotation_euler.y = 0.2
     light_object.rotation_euler.x = -0.2
     bpy.context.collection.objects.link(light_object)
@@ -2152,9 +2175,18 @@ class USP_quickDraw(Operator):
             return {'CANCELLED'}
 
 
+def update_stitching_lines(props):
+  obj = bpy.data.objects[MESH_NAME_USP]
+  bm = bmesh.from_edit_mesh(obj.data)
+
+  for v in bm.verts:
+      if v.select:
+          if v.index not in props.currentDrawing:
+              props.currentDrawing.append(v.index)
+
 class USP_SelectStitchingPoint(Operator):
     """Draw a stitching line by selecting points in order"""
-    bl_idname = "object.modal_operator"
+    bl_idname = "edit.start_drawing"
     bl_label = "Simple Modal Operator"
    
     def modal(self, context, event):
@@ -2164,14 +2196,7 @@ class USP_SelectStitchingPoint(Operator):
         if props.if_user_is_drawing:
         
             if event.type == 'LEFTMOUSE':
-
-                obj = bpy.data.objects[MESH_NAME_USP]
-                bm = bmesh.from_edit_mesh(obj.data)
-
-                for v in bm.verts:
-                    if v.select:
-                        if v.index not in props.currentDrawing:
-                            props.currentDrawing.append(v.index)
+                update_stitching_lines(props)
 #                            print(props.currentDrawing)
         else:
             return{'CANCELLED'}
@@ -2219,10 +2244,13 @@ class USP_FinishCurrentDrawing(Operator):
     
     def execute(self, context):
         
-        bpy.ops.object.mode_set(mode = 'OBJECT')
-        
         props = bpy.context.scene.sl_props
         
+        update_stitching_lines(props)
+        deselect_all_vert_in_mesh(bpy.data.objects[MESH_NAME_USP])
+
+        # bpy.ops.object.mode_set(mode = 'OBJECT')
+
         if not props.if_curr_drawing_is_shown:
             mesh = bpy.data.objects[MESH_NAME_USP]
             pts = get_vtx_pos(mesh, props.currentDrawing)
@@ -2247,6 +2275,7 @@ class USP_FinishPattern(Operator):
     
     def execute(self, context):
             
+        bpy.ops.object.mode_set(mode = 'OBJECT')
         props = bpy.context.scene.sl_props
                 
         mesh = bpy.data.objects[MESH_NAME_USP]
@@ -2373,7 +2402,7 @@ class USP_CreateGrid(Operator):
         usp_loc, _ = update_usp_fsp_location()
 
 
-        add_text_to_scene(body="Create Unit Pattern", 
+        add_text_to_scene(body="Create unit pattern", 
                           location=(0, usp_loc[1] + base_y + LAYOUT_TEXT, 0), 
                           scale=(1,1,1),
                           obj_name='grid_annotation',
@@ -2389,12 +2418,12 @@ class USP_CreateGrid(Operator):
 
 
 # ------------------------------------------------------------------------
-#    Full Smocking Pattern by Tiling
+#    Full smocking pattern by Tiling
 # ------------------------------------------------------------------------
 class HoneycombGrid(Operator):
   """Generate the full smokcing pattern by tiling the specified unit pattern"""
   bl_idname = "object.create_honeycomb_grid"
-  bl_label = "Generate Full Smocking Pattern"
+  bl_label = "Generate Full smocking pattern"
   bl_options = {'REGISTER', 'UNDO'}
 
   def execute(self, context):
@@ -2413,7 +2442,7 @@ class HoneycombGrid(Operator):
                              MESH_NAME_FSP, 
                               COLL_NAME_FSP,
                               COLL_NAME_FSP_SL,
-                              "Full Smocking Pattern")
+                              "Full smocking pattern")
     bpy.types.Scene.solver_data.full_smocking_pattern = fsp
     bpy.types.Scene.solver_data.hex_centers = centers
 
@@ -2427,7 +2456,7 @@ class HoneycombGrid(Operator):
 class FSP_Tile(Operator):
     """Generate the full smokcing pattern by tiling the specified unit pattern"""
     bl_idname = "object.create_full_smocking_pattern"
-    bl_label = "Generate Full Smocking Pattern"
+    bl_label = "Generate Full smocking pattern"
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
@@ -2459,7 +2488,7 @@ class FSP_Tile(Operator):
                              MESH_NAME_FSP, 
                              COLL_NAME_FSP,
                              COLL_NAME_FSP_SL,
-                             "Full Smocking Pattern")
+                             "Full smocking pattern")
 
 
         # save the loaded pattern to the scene
@@ -2530,7 +2559,7 @@ class FSP_Import(Operator):
 
         dt = bpy.types.Scene.solver_data
         dt.full_smocking_pattern = read_obj_to_fsp(bpy.path.abspath(context.scene.path_import_fullpattern), 
-        MESH_NAME_FSP, COLL_NAME_FSP, COLL_NAME_FSP_SL, "Full Smocking Pattern")
+        MESH_NAME_FSP, COLL_NAME_FSP, COLL_NAME_FSP_SL, "Full smocking pattern")
 
         usp_loc, fsp_loc = update_usp_fsp_location()
         # usp.plot(usp_loc)
@@ -2808,7 +2837,9 @@ class FSP_CombinePatterns_load_first(Operator):
         
 
         # load the exiting smocking pattern to my_coll
-        file_name = bpy.path.abspath(context.scene.file_import_p1)
+        # TODO: Revert
+        # file_name = bpy.path.abspath(context.scene.file_import_p1)
+        file_name = "/Users/avivsegall/projs/SmockingDesign/full_smocking_patterns/" + context.scene.file_import_p1 + "_2.obj"
         
         fsp = read_obj_to_fsp(file_name, MESH_NAME_P1, COLL_NAME_P1, COLL_NAME_P1_SL, "Pattern 01")
 
@@ -2841,7 +2872,9 @@ class FSP_CombinePatterns_load_second(Operator):
 
     
         # load the exiting smocking pattern to my_coll
-        file_name = bpy.path.abspath(context.scene.file_import_p2)
+        # TODO: Revert 
+        # file_name = bpy.path.abspath(context.scene.file_import_p2)
+        file_name = "/Users/avivsegall/projs/SmockingDesign/full_smocking_patterns/" + context.scene.file_import_p2 + "_2.obj"
         
         fsp = read_obj_to_fsp(file_name, MESH_NAME_P2, COLL_NAME_P2, COLL_NAME_P2_SL, "Pattern 02")
 
@@ -2989,7 +3022,7 @@ class FSP_confirm_tmp_fsp(Operator):
     
     def execute(self, context):
         dt = bpy.types.Scene.solver_data
-        
+        delete_our_simulation()
         fsp = dt.tmp_fsp
 
         if fsp == []:
@@ -3003,7 +3036,7 @@ class FSP_confirm_tmp_fsp(Operator):
                  MESH_NAME_FSP, 
                  COLL_NAME_FSP,
                  COLL_NAME_FSP_SL,
-                 "Full Smocking Pattern",
+                 "Full smocking pattern",
                  "Radial" in fsp.pattern_name)
             dt.full_smocking_pattern = fsp_new
 
@@ -3079,12 +3112,17 @@ class PrepareCylinderArapOperator(Operator):
     weight = context.scene.arap_constraint_weight
     g_arap, g_constraints, delete_verts, new_verts = prepare_cylinder_arap(g_V.T, g_F, g_arap, fsp, sg, weight)
     g_mesh.vertices.foreach_set("co", new_verts.reshape(new_verts.size))
-    dt.arap_data[0] = new_verts.T
+    dt.arap_data[0] = None
     dt.arap_data[4] = g_arap
     dt.arap_data[5] = g_constraints
     dt.delete_verts = delete_verts
 
     return {'FINISHED'}
+
+def delete_our_simulation():
+  if "Smocked" in bpy.data.meshes:
+      bpy.data.meshes.remove(bpy.data.meshes["Smocked"])
+      bpy.data.collections.remove(bpy.data.collections['smocked_collection'])
 
 class PrepareArapOperator(Operator):
   bl_idname = "object.prepare_arap_operator"
@@ -3123,11 +3161,12 @@ class PrepareArapOperator(Operator):
     bbox_min, bbox_max = (np.min(g_V[0:2, :], axis=1), np.max(g_V[0:2, :], axis=1))
     bbox_size = bbox_max - bbox_min
     fsp_obj = bpy.data.objects[MESH_NAME_FSP]
-    shift_x = np.max([v.co[0] for v in fsp_obj.data.vertices]) + fsp_obj.location[0] - bbox_min[0]
-    margin = bpy.context.scene.arap_margin
+    shift_x = np.max([v.co[0] for v in fsp_obj.data.vertices]) + fsp_obj.location[0]  - bbox_min[0]
+    margin_lr = (bpy.context.scene.arap_margin_left, bpy.context.scene.arap_margin_right)
+    margin_tb = (bpy.context.scene.arap_margin_top, bpy.context.scene.arap_margin_bottom)
 
     obj = bpy.data.objects.new('smocked_obj', smocked_mesh)
-    obj.location = (shift_x - margin, -bbox_min[1] - margin, 0)
+    obj.location = (shift_x - margin_lr[0], -bbox_min[1] - margin_tb[0], 0)
     obj.data.materials.append(bpy.data.materials['Fabric035'])
     for f in obj.data.polygons:
       f.use_smooth = True
@@ -3136,7 +3175,7 @@ class PrepareArapOperator(Operator):
     smocked_collection.objects.link(obj)
 
     add_text_to_scene(body="Our simulation", 
-                          location=np.array(obj.location) + (0, bbox_max[1] - margin + LAYOUT_TEXT, 0), 
+                          location=np.array(obj.location) + (LAYOUT_TEXT*4 + bbox_min[0], bbox_max[1] - margin_tb[1] + LAYOUT_TEXT, 0), 
                           scale=(1,1,1),
                           obj_name="our_simulation_annotation",
                           coll_name="smocked_collection")
@@ -3151,8 +3190,6 @@ class MagicButtonOperator(Operator):
 
     def execute(self, context):
         bpy.ops.object.sg_embed_graph()
-        bpy.ops.object.prepare_arap_operator()
-        bpy.ops.arap.realtime_operator()
 
         dt = bpy.types.Scene.solver_data
         fsp = dt.full_smocking_pattern
@@ -3163,6 +3200,11 @@ class MagicButtonOperator(Operator):
             sg.plot()
         if context.window_manager.if_show_embedded_graph:
             sg.plot_embed(dt.embeded_graph, location=(np.max(fsp.V[:, 0]) + 1, 0))
+        
+        global arap_start_time
+        arap_start_time = time.time()
+        bpy.ops.object.prepare_arap_operator()
+        bpy.ops.arap.realtime_operator()
 
         return {'FINISHED'}
 
@@ -3352,12 +3394,15 @@ class UnitGridPanel(bpy.types.Panel):
         box = layout.box()
         box.row()
         row = box.row()
-        if(not context.window_manager.usp_drawing_started):
-            row.alert=context.scene.if_highlight_button
-            row.operator(USP_SelectStitchingPoint.bl_idname, text="Draw", icon='GREASEPENCIL')
-        else:
-            row.alert=context.scene.if_highlight_button
-            row.operator(USP_FinishCurrentDrawing.bl_idname, text="Done", icon='CHECKMARK')
+        row.label(text="Ctrl+S to start drawing")
+        row = box.row()
+        row.label(text="Ctrl+D to finish drawing")
+        # if(not context.window_manager.usp_drawing_started):
+        #     row.alert=context.scene.if_highlight_button
+        # row.operator(USP_SelectStitchingPoint.bl_idname, text="Draw", icon='GREASEPENCIL')
+        # else:
+        #     row.alert=context.scene.if_highlight_button
+        #     row.operator(USP_FinishCurrentDrawing.bl_idname, text="Done", icon='CHECKMARK')
        
 
         # row.alert=context.scene.if_highlight_button
@@ -3854,7 +3899,7 @@ class Parameter_panel(bpy.types.Panel):
         box.row().prop(context.scene, 'pleat_max_embed')
         box.row().prop(context.scene, 'pleat_variance')
         box.row().prop(context.scene, 'positive_pleats')
-        box.row().prop(context.scene, 'pleat_embed_fancy_init')
+        # box.row().prop(context.scene, 'pleat_embed_fancy_init')
 
         layout.label(text="ARAP parameters")
         box = layout.box()
@@ -3862,7 +3907,11 @@ class Parameter_panel(bpy.types.Panel):
         box.row().prop(context.scene, 'arap_num_iters')
         box.row().prop(context.scene, 'fine_grid_step')
         box.row().prop(context.scene, 'radial_gathering_radius')
-        box.row().prop(context.scene, 'arap_margin')
+        box.row().label(text="margin")
+        box.row().prop(context.scene, 'arap_margin_top', text="top")
+        box.row().prop(context.scene, 'arap_margin_bottom', text="bottom")
+        box.row().prop(context.scene, 'arap_margin_left', text="left")
+        box.row().prop(context.scene, 'arap_margin_right', text="right")
 
         layout.label(text="Wrapping")
         box = layout.box()
@@ -4018,6 +4067,7 @@ _classes = [
     DirectArapOperator,
  ]
 
+addon_keymaps = []
 
 def register():
     for (prop_name, prop_value) in PROPS:
@@ -4029,6 +4079,17 @@ def register():
     bpy.types.Scene.sl_props = GlobalVariable()
     bpy.types.Scene.solver_data = SolverData()
     initialize_data()
+
+    # Shortcuts
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.addon
+    if kc:
+        km = wm.keyconfigs.addon.keymaps.new(name='3D View', space_type='VIEW_3D')
+        kmi = km.keymap_items.new(USP_FinishCurrentDrawing.bl_idname, type='D', value='PRESS', ctrl=True)
+        addon_keymaps.append((km, kmi))
+        kmi = km.keymap_items.new(USP_SelectStitchingPoint.bl_idname, type='S', value='PRESS', ctrl=True)
+        addon_keymaps.append((km, kmi))
+
     
 
 def unregister():
@@ -4037,6 +4098,10 @@ def unregister():
         
     del bpy.types.Scene.sl_props    
     del bpy.tpyes.Scene.solver_data
+    for km, kmi in addon_keymaps:
+        km.keymap_items.remove(kmi)
+    addon_keymaps.clear()
+
 
 if __name__ == "__main__":
     register()

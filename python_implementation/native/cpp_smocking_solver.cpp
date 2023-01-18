@@ -11,6 +11,7 @@
 
 #include "SparseAD/include/Dual.h"
 #include "SparseAD/include/Problem.h"
+#include "arap.h"
 #include "param.h"
 
 template<typename T>
@@ -50,7 +51,7 @@ std::vector<std::vector<double>> embed_underlay(
     const std::vector<std::vector<double>>& eq_constraints) {
   Eigen::MatrixXd x_init = std_to_eig(x_vec_init);
 
-  const auto& energy_func = [&]<typename T>(int i, auto& x) {
+  const auto& energy_func = [&]<typename T>(int i, auto& x) -> T {
     int a = eq_constraints[i][0], b = eq_constraints[i][1];
     double d = eq_constraints[i][2];
     return sqr((x.row(a) - x.row(b)).norm() - d);
@@ -124,7 +125,7 @@ std::vector<std::vector<double>> embed_pleats(
   };
 
   return eig_to_std(
-      SparseAD::Problem(x_pleats)
+      SparseAD::Problem(x_pleats, SparseAD::Problem::Options {.relative_change_tolerance = 1e-4})
           // Maximize pleat-pleat distance.
           .add_sparse_energy<6>(
               sqr(x_pleats.rows()),
@@ -201,4 +202,6 @@ PYBIND11_MODULE(cpp_smocking_solver, m) {
   m.def("embed_underlay", &embed_underlay, "Embed underlay graph.");
   m.def("embed_pleats", &embed_pleats, "Embed pleats graph.");
   m.def("bary_coords", &bary_coords, "Get isometry distortion.");
+  m.def("prepare_arap_constraints", &prepare_constraints, "Prepare the edge constraints for ARAP");
+  m.def("run_arap_step", &run_one_step, "Run one step of ARAP");
 }

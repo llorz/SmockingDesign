@@ -103,8 +103,6 @@ class Dual {
   friend Dual sqrt(Dual&& a);
   friend Dual sqr(const Dual& a);
   friend Dual sqr(Dual&& a);
-  friend Dual abs(const Dual& a);
-  friend Dual abs(Dual&& a);
   friend Dual pow(const Dual& a, const double exponent);
   friend Dual pow(const Dual& a, const int exponent);
   friend Dual pow(Dual&& a, const int exponent);

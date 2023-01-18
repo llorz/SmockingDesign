@@ -26,9 +26,9 @@ class Problem {
   struct Options {
     // Whether to cache the hessian pattern.
     // Set to true when the structure of the hessian is fixed.
-    bool cache_pattern = false;
+    bool cache_pattern = true;
     // Remove unreferenced nodes when taking the step.
-    bool remove_unreferenced = true;
+    bool remove_unreferenced = false;
     // Whether to try -grad direction (to escape concave regions).
     bool try_grad_dir = false;
 
@@ -39,6 +39,10 @@ class Problem {
     int line_search_iterations = 10;
     double step_decrease_factor = 0.6;
     std::ostream& report_stream = std::cout;
+
+    // Stop the optimization if the relative change to the energy
+    // is less than this threshold.
+    double relative_change_tolerance = 1e-6;
   };
 
   Problem(const Eigen::MatrixXd& init);
@@ -74,7 +78,7 @@ class Problem {
   }
   template <int k, typename EnergyProvider>
   inline Problem& add_sparse_energy(int num, EnergyProvider provider) {
-    return add_sparse_energy<k>(num, Energy<EnergyProvider> {.provider=provider});
+    return add_sparse_energy<k>(num, Energy {.provider=provider});
   }
   template <int k, typename G>
   Problem& add_sparse_energy(int num, Energy<G> energy) {
@@ -83,7 +87,8 @@ class Problem {
             num,
             [energy](int num, auto& vars) {
               return energy.provider.template operator()<TDenseDual<k>>(num, vars);
-            }, energy.project_hessian),
+            },
+             energy.project_hessian),
         .value_func = val_func(
             num,
             [energy](int num, auto& vars) {

@@ -1,3 +1,8 @@
+#if __INTELLISENSE__
+#undef __ARM_NEON
+#undef __ARM_NEON__
+#endif
+
 #include "../include/Problem.h"
 
 #include <chrono>
@@ -28,11 +33,12 @@ namespace SparseAD {
               << duration_cast<microseconds>(stop2 - stop).count() << " us) "; \
   }
 
-#define REPORT_LINE_SEARCH(step)                                            \
+#define REPORT_LINE_SEARCH(step, decrease)                                  \
   if (_options.report_level == Options::EVERY_STEP) {                       \
     stop3 = high_resolution_clock::now();                                   \
     std::cout << (step == 0 ? "| LINE SEARCH FAILED "                       \
                             : ("| step size: " + std::to_string(step)))     \
+              << " | Decrease: " << decrease  \
               << " (" << duration_cast<microseconds>(stop3 - stop2).count() \
               << " us)" << std::endl;                                       \
   }
@@ -211,7 +217,7 @@ Problem& Problem::optimize(const EnergyFunc& func) {
     // Find new value.
     double step_size;
     _cur = line_search(f, d, dir_dot_grad, func, step_size);
-    REPORT_LINE_SEARCH(step_size);
+    REPORT_LINE_SEARCH(step_size, 0);
   }
   REPORT_NOT_CONVERGED(i, last_energy);
   return *this;
@@ -288,9 +294,14 @@ Problem& Problem::optimize() {
     }
 
     // Find new value.
-    double step_size, new_f;
+    double step_size, new_f, decrease;
     if (!_options.try_grad_dir) {
       _cur = line_search(f, d, dir_dot_grad, step_size, new_f);
+      decrease = abs((new_f - f) / new_f);
+      if (decrease < _options.relative_change_tolerance) {
+        REPORT_CONVERGENCE(i, new_f);
+        return *this;
+      } 
     } else {
       auto first_cand = line_search(f, d, dir_dot_grad, step_size, new_f);
       double grad_step_size, grad_f;
@@ -302,7 +313,7 @@ Problem& Problem::optimize() {
         step_size = grad_step_size;
       }
     }
-    REPORT_LINE_SEARCH(step_size);
+    REPORT_LINE_SEARCH(step_size, decrease);
     if (step_size == 0) {
       break;
     }

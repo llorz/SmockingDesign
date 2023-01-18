@@ -11,6 +11,8 @@ class TGenericVariableFactory {
  public:
  TGenericVariableFactory(const Eigen::MatrixXd& current): _current(current) {}
 
+  using Type = T;
+
   virtual T operator()(int i) const = 0;
   virtual T operator()(int i, int j) const = 0;
   int num_vars() const {

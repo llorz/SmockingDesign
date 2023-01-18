@@ -82,6 +82,8 @@ class ARAP:
         R = np.array([np.eye(self.n_dims) for _ in range(self.n_pnts)])
         if def_points is None:
           def_points = self._solver( self._L.T@self._build_rhs(R) + self._cos_rhs )
+          for i, v in self._constraints.items():
+            def_points[i,:] = v
         for i in range(num_iters):
             R = self._estimate_rotations( def_points.T )
             def_points = self._solver( self._L.T@self._build_rhs(R) + self._cos_rhs )

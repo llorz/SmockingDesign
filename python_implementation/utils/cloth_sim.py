@@ -6,6 +6,8 @@ from mathutils import Vector
 import bmesh
 import itertools
 
+LAYOUT_TEXT = 0.4
+
 def extract_graph_from_meshgrid(gx, gy, if_add_diag=True):
     """extract the mesh/graph from the grid"""
     # number of vertices along x/y directions 
@@ -77,7 +79,7 @@ def create_cloth_mesh(fsp, add_text_to_scene):
   
   # Create object and collection
   obj = bpy.data.objects.new('cloth_sim_obj', mesh)
-  obj.location = (np.max(fsp.V[:, 0]), np.max(fsp.V[:, 1]) + 2, 0)
+  obj.location = (np.max(fsp.V[:, 0]), np.max(fsp.V[:, 1]) + 4, 0)
   obj.data.materials.append(bpy.data.materials['Fabric035'])
   for f in obj.data.polygons:
     f.use_smooth = True
@@ -100,7 +102,7 @@ def create_cloth_mesh(fsp, add_text_to_scene):
   bpy.ops.object.mode_set(mode='OBJECT')
 
   add_text_to_scene(body="Blender cloth simulation", 
-                          location=np.array(obj.location) + (np.max(fsp.V[:, 0]) * 0.25, np.max(fsp.V[:, 1]) + 1, 0), 
+                          location=np.array(obj.location) + (LAYOUT_TEXT*2.7, np.max(fsp.V[:, 1]) + 1, 0), 
                           scale=(1,1,1),
                           obj_name="cloth_sim_annotation",
                           coll_name="cloth_sim_collection")
