@@ -12,6 +12,7 @@ bl_info = {
 
 
 
+from math import *
 import bpy
 from bpy.props import IntProperty, FloatProperty
 import bmesh
@@ -184,6 +185,8 @@ PROPS = [
     ('arap_margin_bottom', bpy.props.FloatProperty(name='margin_bottom', default=0.5, min=0.0)),
     ('arap_margin_left', bpy.props.FloatProperty(name='margin_left', default=0.5, min=0.0)),
     ('arap_margin_right', bpy.props.FloatProperty(name='margin_right', default=0.5, min=0.0)),
+    ('grid_deform_func', bpy.props.StringProperty(name='f(x,y)=', default="(x, y)")),
+    ('subdivide_grid', bpy.props.IntProperty(name='Subdivide coarse', default=3)),
     
 
 
@@ -753,7 +756,28 @@ class SmockingPattern():
     def return_pattern_height(self):
         return max(self.V[:, 1]) - min(self.V[:, 1])
     
+    def update_vertices_and_faces(self, verts, faces, edges = []):
+      # The closest new vertex to each of the old verts.
+      closest_index = [np.argmin(np.linalg.norm(verts - p, axis=1)) for p in self.V]
+      # Create a mapping for the ones with distance less than some tolerance.
+      old_to_new = {i: closest_index[i] for i in range(len(self.V))
+      if np.linalg.norm(self.V[i] - verts[closest_index[i]]) < 1e-3}
+      # Update the indices in the edges (keep only the ones where both vertices
+      # remain in the mesh).
+      if len(edges) == 0:
+        # Take edges from the old set of edges.
+        # new_E = np.array([(old_to_new[i], old_to_new[j]) for i, j in self.E
+        #       if i in old_to_new and j in old_to_new])
+        # Create edges between each two nodes on each face.
+        print("I'm here!")
+        edges = {(min(x,y), max(x,y)) for f in faces for x in f for y in f if x != y}
+        new_E = list(edges)
+      else:
+        new_E = edges
 
+      self.V = verts
+      self.F = faces
+      self.E = new_E
 
 
     def plot(self, location=(0,0)):
@@ -946,11 +970,28 @@ def prepare_arap(x, fsp, sg, weight = 1):
     np.linspace(bbox_min[0] - margin_lr[0], bbox_max[0] + margin_lr[1], grid_size[0]),
     np.linspace(bbox_min[1] - margin_tb[0], bbox_max[1] + margin_tb[1], grid_size[1]))
   
+  if bpy.context.scene.subdivide_grid == 0:
   # Create graph from grid. 
-  F, V, _ = extract_graph_from_meshgrid(gx, gy, True)
+    F, V, _ = extract_graph_from_meshgrid(gx, gy, True)
+  else:
+    fsp_obj = bpy.data.objects[MESH_NAME_FSP]
+    obj_copy = fsp_obj.copy()
+    obj_copy.data = fsp_obj.data.copy()
+    bpy.data.collections['SmockingPattern'].objects.link(obj_copy)
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.context.view_layer.objects.active = obj_copy
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
+    bpy.ops.mesh.subdivide(number_cuts=bpy.context.scene.subdivide_grid )
+    bpy.ops.object.mode_set(mode="OBJECT")
+    mesh = obj_copy.data
+    F = np.array([f.vertices for f in mesh.polygons])
+    V = np.array([v.co[0:2] for v in mesh.vertices])
+    bpy.data.meshes.remove(mesh)
+
   # Quad -> triangle mesh.
   F = np.array(list(itertools.chain.from_iterable(\
-      [(f[[0,1,2]], f[[2,3,0]]) for f in F])))
+    [(f[[0,1,2]], f[[2,3,0]]) if len(f) == 4 else [f[[0,1,2]]] for f in F])))
 
   # TODO: Replace with a faster version?
   # Find the closest vertex in the grid to each of the vertices in the coarse one.
@@ -1290,7 +1331,7 @@ def deform_fsp_into_radial_grid(fsp, ratio):
 
 def extract_smocked_graph_from_full_smocking_pattern(fsp, init_type = 'center'):
     fsp_vid_underlay = fsp.stitching_points_vtx_id
-    fsp_vid_pleat = np.setdiff1d(range(fsp.nv), fsp_vid_underlay)
+    fsp_vid_pleat = np.setdiff1d(range(len(fsp.V)), fsp_vid_underlay)
 
     # use dictionary to record the vertex correspondences between the 
     # smocked graph (sg) and the smocking pattern (sp)
@@ -1326,6 +1367,7 @@ def extract_smocked_graph_from_full_smocking_pattern(fsp, init_type = 'center'):
 
     for vid in range(len(dict_sg2sp)):
         vtx = dict_sg2sp[vid]
+        print("Vtx is:", vtx)
         if len(vtx) > 1:
             if init_type == 'center':
                 coord = np.mean(V[vtx, :], axis=0)
@@ -1923,15 +1965,25 @@ def refresh_stitching_lines(fsp):
         gp = bpy.data.grease_pencils[sl_name]
         pts = gp.layers.active.active_frame.strokes[0].points
 
-        for p in pts:
+        locations = []
+        for i  in range(len(pts)):
+            p = pts[i]
             # p is in the world coordinate
             # need to translate it back to the grid-coordinate
             # grid_location = np.array([p.co[0]-trans[0], p.co[1]-trans[1], p.co[2]-trans[2]])
             grid_location = np.array([p.co[0]-trans[0], p.co[1]-trans[1]])
             if np.any(np.linalg.norm(fsp.V - grid_location, axis=1) < 1e-5):
-              all_sp.append(grid_location)
-              all_sp_lid.append(lid)
-        lid += 1
+              locations.append(grid_location)
+              # all_sp_lid.append(lid)
+            elif i != 1 or len(pts) != 3:
+              locations = []
+              bpy.data.objects.remove(bpy.data.objects[sl_name])
+              bpy.data.grease_pencils.remove(gp)
+              break
+        if len(locations) > 0:
+          all_sp = all_sp + locations
+          all_sp_lid = all_sp_lid + [lid] * len(locations)
+          lid += 1
         
 
     all_sp_pid = all_sp_lid # now patchID is useless
@@ -2742,6 +2794,13 @@ class FSP_AddStitchingLines_draw_finish(Operator):
     def execute(self, context):
         dt = bpy.types.Scene.solver_data
         fsp = dt.full_smocking_pattern
+        obj = bpy.data.objects[MESH_NAME_FSP]
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode = 'OBJECT')
+        V = np.array([v.co[0:2] for v in obj.data.vertices])
+        F = np.array([f.vertices for f in obj.data.polygons])
+        # E = np.array([e.vertices for e in obj.data.edges])
+        fsp.update_vertices_and_faces(V, F, [])
         
         all_sp, all_sp_lid, all_sp_pid = refresh_stitching_lines(fsp)
         
@@ -2753,6 +2812,30 @@ class FSP_AddStitchingLines_draw_finish(Operator):
                     
         return {'FINISHED'}
 
+class FSP_FinishEditingGrid(Operator):
+    bl_idname = "object.fsp_finish_editing_grid"
+    bl_label = "Finish editing the full smocking pattern grid"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        dt = bpy.types.Scene.solver_data
+        fsp = dt.full_smocking_pattern
+        obj = bpy.data.objects[MESH_NAME_FSP]
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode = 'OBJECT')
+        fsp.V = np.array([v.co[0:2] for v in obj.data.vertices])
+        fsp.F = np.array([f.vertices for f in obj.data.polygons])
+
+        # Deform function
+        deform_func = context.scene.grid_deform_func
+        if deform_func != '(x, y)' and len(deform_func) > 0:
+          fsp.V = np.array([eval(deform_func, {'np': np}, {'x': x, 'y': y}) for x, y in fsp.V])
+
+        usp_loc, fsp_loc = update_usp_fsp_location()
+        # usp.plot(usp_loc)
+        fsp.plot(fsp_loc)
+
+        return {'FINISHED'}
 
 
 class FSP_EditMesh_start(Operator):
@@ -3653,11 +3736,11 @@ class FULLGRID_PT_edit_pattern(FullGrid_panel, bpy.types.Panel):
         layout.use_property_split = True
         layout.use_property_decorate = False  # No animation.
 
-
-        layout.label(text= "Delete stitching lines")
         
+        layout.label(text="Modify stitching pattern")
         box = layout.box()
-        box.label(text= "Select a stitching line and press x")
+        box.label(text= "Delete by selecting a line and pressing x")
+        box.row()
         # box.row()
         # row = box.row()
         # row.alert=context.scene.if_highlight_button
@@ -3667,9 +3750,7 @@ class FULLGRID_PT_edit_pattern(FullGrid_panel, bpy.types.Panel):
         # row.operator(FSP_DeleteStitchingLines_done.bl_idname, text="Done", icon="CHECKMARK")
         # box.row()
         
-        layout.label(text= "Add new stitching lines")
-        box = layout.box()
-        box.row()
+        box.label(text= "Add new stitching lines")
         row = box.row()
 
         if(not context.window_manager.fsp_drawing_started):
@@ -3678,17 +3759,23 @@ class FULLGRID_PT_edit_pattern(FullGrid_panel, bpy.types.Panel):
         else:
             row.alert=context.scene.if_highlight_button
             row.operator(FSP_AddStitchingLines_draw_end.bl_idname, text="Done", icon='CHECKMARK')
-        
-        
+  
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_AddStitchingLines_draw_add.bl_idname, text="Add", icon='ADD')
-        
 
-        row = layout.row()
+        # Finish editing button.
+        box.row()
+        row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_AddStitchingLines_draw_finish.bl_idname, text="Finish editing", icon='CHECKBOX_HLT')
-        box.row()
         
+        layout.label(text="Modify grid")
+        box = layout.box()
+        row = box.row()
+        row.prop(context.scene, 'grid_deform_func')
+        row = box.row()
+        row.alert = context.scene.if_highlight_button
+        row.operator(FSP_FinishEditingGrid.bl_idname, text="Finish modifying grid", icon="MOD_WARP")
         
         # layout.label(text= "Edit the Smocking Grid")
         # box = layout.box()
@@ -3907,6 +3994,7 @@ class Parameter_panel(bpy.types.Panel):
         box.row().prop(context.scene, 'arap_num_iters')
         box.row().prop(context.scene, 'fine_grid_step')
         box.row().prop(context.scene, 'radial_gathering_radius')
+        box.row().prop(context.scene, 'subdivide_grid')
         box.row().label(text="margin")
         box.row().prop(context.scene, 'arap_margin_top', text="top")
         box.row().prop(context.scene, 'arap_margin_bottom', text="bottom")
@@ -4045,6 +4133,7 @@ _classes = [
     FSP_AddStitchingLines_draw_end,
     FSP_AddStitchingLines_draw_add,    
     FSP_AddStitchingLines_draw_finish,
+    FSP_FinishEditingGrid,
     FSP_CombinePatterns_load_first,
     FSP_CombinePatterns_load_second,
     FSP_CombinePatterns_assign_to_first,
