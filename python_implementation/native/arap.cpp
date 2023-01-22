@@ -5,6 +5,7 @@
 
 #include "SparseAD/include/Problem.h"
 #include <Eigen/Eigen>
+#include <unordered_set>
 #include "arap.h"
 #include <type_traits>
 
@@ -70,22 +71,43 @@ std::vector<std::vector<double>> run_one_step(
     }
 
     SparseAD::Problem prob(verts, SparseAD::Problem::Options {.num_iterations = 3});
-    // prob.add_sparse_energy<6>(edge_constraints.size(), [&]<typename T>(int i, auto& x) -> T {
-    //   int v0 = edge_constraints[i][0], v1 = edge_constraints[i][1];
-    //   double dist = edge_constraints[i][2];
-    //   return w_edge * SparseAD::sqr((x.row(v0) - x.row(v1)).norm() - dist);
-    // });
-    prob.add_sparse_energy<9>(faces.size(), [&]<typename T>(int i, auto& x) -> T {
-      const auto& mat = get_local_frame<T>(x, faces[i]);
-      const auto& j = mat * local_frame_inverses[i];
-      // return 0.0;
-      return mat.norm();
+    // "ARAP" energy.
+    prob.add_sparse_energy<6>(edge_constraints.size(), [&]<typename T>(int i, auto& x) -> T {
+      int v0 = edge_constraints[i][0], v1 = edge_constraints[i][1];
+      double dist = edge_constraints[i][2];
+      return w_edge * SparseAD::sqr((x.row(v0) - x.row(v1)).norm() - dist);
     });
-    // prob.add_sparse_energy<3>(constraints.size(), [&]<typename T>(int i, auto& x) -> T {
-    //   int v0 = constraints[i][0];
-    //   Eigen::Vector3d pos {constraints[i][1], constraints[i][2], constraints[i][3]};
-    //   return w_constraints * (x.row(v0) - pos).squaredNorm();
-    // });
+
+
+    // Constraints energy for the underlay vertices.
+    prob.add_sparse_energy<3>(constraints.size(), [&]<typename T>(int i, auto& x) -> T {
+      int v0 = constraints[i][0];
+      Eigen::Vector3d pos {constraints[i][1], constraints[i][2], constraints[i][3]};
+      return w_constraints * (x.row(v0) - pos).squaredNorm();
+    });
+
+  
+    // Prepare gravity energy.
+    // Create a set with the constrained vertices.
+    std::unordered_set<int> constraint_vertices;
+    for (auto& c  : constraints) {
+      constraint_vertices.insert((int)c[0]);
+    }
+    // Build a vector with the indices of the vertices on which gravity should be appleid.
+    std::vector<int> gravity_vertices;
+    gravity_vertices.reserve(vertices.size() - constraints.size());
+    for (int i = 0; i < vertices.size() - constraints.size(); i++) {
+      if (constraint_vertices.count(i) == 0) {
+        gravity_vertices.push_back(i);
+      }
+    }
+
+    prob.add_sparse_energy<1>(gravity_vertices.size(), [&]<typename T>(int i, auto& x) -> T {
+      auto pos = x(gravity_vertices[i], 1);
+      return -w_gravity * pos;
+    });
+
+
     prob.optimize();
     return eig_to_std(prob.current());
   }

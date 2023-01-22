@@ -137,8 +137,8 @@ PROPS = [
     # for full grid (full smocking pattern)
     ('num_x', bpy.props.FloatProperty(name='X: repeat', default=3, min=1, max=50)),
     ('num_y', bpy.props.FloatProperty(name='Y: repeat', default=3, min=1, max=50)),
-    ('shift_x', bpy.props.IntProperty(name='X: shift', default=0, min=-10, max=10)),
-    ('shift_y', bpy.props.IntProperty(name='Y: shift', default=0, min=-10, max=10)),
+    ('shift_x', bpy.props.FloatProperty(name='X: shift', default=0, min=-10, max=10)),
+    ('shift_y', bpy.props.FloatProperty(name='Y: shift', default=0, min=-10, max=10)),
 #    ('type_tile', bpy.props.EnumProperty(items = [("regular", "regular", "tile in a regular grid"), ("radial", "radial", "tile in a radial grid")], name="Type", default="regular")),
     ('margin_top', bpy.props.FloatProperty(name='Top', default=0, min=0, max=10)),
     ('margin_bottom', bpy.props.FloatProperty(name='Bottom', default=0, min=0, max=10)),
@@ -158,7 +158,7 @@ PROPS = [
                                                           ("y", "y axis", "along y axis",'',1)], 
                                                           name="Combine", default="x")),
     ('combine_space', bpy.props.FloatProperty(name='Spacing', default=2, min=1, max=20)),
-    ('combine_shift', bpy.props.IntProperty(name='Shift', default=0, min=-20, max=20)),
+    ('combine_shift', bpy.props.FloatProperty(name='Shift', default=0, min=-20, max=20)),
     
     ('fsp_edit_selection', bpy.props.EnumProperty(items= (('V', 'VERT', 'move vertices', 'VERTEXSEL', 0),    
                                                           ('E', 'EDGE', 'move edges', 'EDGESEL', 1),    
@@ -885,11 +885,11 @@ class RealtimeArapOperator(bpy.types.Operator):
     _timer = None
 
     def modal(self, context, event):
-        global arap_start_time
+        # global arap_start_time
         if event.type in {'ESC'}:
             self.cancel(context)
             cur_time = time.time()
-            print("Arap took " + str(cur_time - arap_start_time) + " seconds")
+            # print("Arap took " + str(cur_time - arap_start_time) + " seconds")
             arap_start_time = None
             return {'CANCELLED'}
 
@@ -3291,6 +3291,26 @@ class MagicButtonOperator(Operator):
 
         return {'FINISHED'}
 
+class IsometryParam(Operator):
+    bl_idname = "objects.isometry_param"
+    bl_label = "Simulate"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        selected_obj = bpy.data.objects[bpy.context.scene.object_to_wrap]
+        uv, verts, faces = wrapping.get_object_data(selected_obj)
+        new_uv = np.array(cpp_smocking_solver.isometry_param(verts, uv, faces))
+        bbox = np.amin(new_uv, axis=0), np.amax(new_uv, axis=0)
+        new_uv -= (bbox[0] + bbox[1])/2
+        new_uv *= 1/max(bbox[1] - bbox[0])
+        new_uv += [0.5, 0.5]
+
+        mesh = selected_obj.data
+        for l in mesh.loop_triangles:
+          for i in range(3):
+            mesh.uv_layers.active.data[l.loops[i]].uv = new_uv[l.vertices[i], :]
+        return {'FINISHED'}
+
 class MagicWrappingOperator(Operator):
     bl_idname = "objects.magic_wrapping_operator"
     bl_label = "Simulate"
@@ -3299,6 +3319,42 @@ class MagicWrappingOperator(Operator):
     def execute(self, context):
         bpy.ops.object.prepare_cylinder_arap_operator()
         bpy.ops.arap.realtime_operator()
+
+        return {'FINISHED'}
+
+class PrepareGravityArap(Operator):
+    bl_idname = "objects.prepare_gravity_arap"
+    bl_label = "Simulate"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+
+        dt = bpy.types.Scene.solver_data
+        g_V, g_F, g_mesh, g_iters, g_arap, g_constraints = dt.arap_data
+        bpy.ops.object.prepare_cylinder_arap_operator()
+        dt.arap_data[0] = g_V
+                
+        dt.gravity_arap_constraints = cpp_smocking_solver.prepare_arap_constraints(g_V.T, g_F)
+
+        return {'FINISHED'}
+
+class RunGravityArapIteration(Operator):
+    bl_idname = "objects.run_gravity_arap_iteration"
+    bl_label = "Simulate"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+
+        dt = bpy.types.Scene.solver_data
+        edge_constraints = dt.gravity_arap_constraints
+        g_V, g_F, g_mesh, g_iters, g_arap, g_constraints = dt.arap_data
+        constraints = [[k, v[0], v[1], v[2]] for k,v in g_constraints.items()]
+        g_V = cpp_smocking_solver.run_arap_step(g_V.T, g_F,
+        edge_constraints, constraints, 1, 1, -0.01)
+        g_V = np.array(g_V)
+        g_mesh.vertices.foreach_set("co", g_V.reshape(g_V.size))
+        g_mesh.update()
+        dt.arap_data[0] = g_V.T
 
         return {'FINISHED'}
 
@@ -3573,11 +3629,21 @@ class ApplicationsPanel(bpy.types.Panel):
         box.row().prop_search(context.scene, "object_to_wrap", bpy.data, "objects", text="")
         row = box.row()
         row.alert=context.scene.if_highlight_button
+        row.operator(IsometryParam.bl_idname, text="Isometry param", icon='MOD_SHRINKWRAP')
+        row = box.row()
+        row.alert=context.scene.if_highlight_button
         row.operator(MagicWrappingOperator.bl_idname, text="Wrap object", icon='MOD_SHRINKWRAP')
         row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(DeleteMargins.bl_idname, text="Delete margins", icon='BRUSH_CURVES_CUT')
         box.row()
+
+        layout.label(text= "Wrap to object")
+        box = layout.box()
+        row = box.row()
+        row.alert=context.scene.if_highlight_button
+        row.operator(PrepareGravityArap.bl_idname, text="Prepare gravity arap", icon='MOD_SHRINKWRAP')
+        row.operator(RunGravityArapIteration.bl_idname, text="Run one step", icon='MOD_SHRINKWRAP')
 
 class embedding_panel(bpy.types.Panel):
   bl_label = "Emedding"
@@ -4146,6 +4212,7 @@ _classes = [
     
     MagicButtonOperator,
     MagicWrappingOperator,
+    IsometryParam,
     
 
     PrepareArapOperator,
@@ -4154,6 +4221,8 @@ _classes = [
     RealtimeArapOperator,
     CreateClothSimOperator,
     DirectArapOperator,
+    PrepareGravityArap,
+    RunGravityArapIteration,
  ]
 
 addon_keymaps = []

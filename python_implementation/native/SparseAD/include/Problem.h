@@ -36,7 +36,7 @@ class Problem {
     enum { NONE = 0, EVERY_STEP = 1, SUMMARY = 2 } report_level = EVERY_STEP;
 
     int num_iterations = 50;
-    int line_search_iterations = 10;
+    int line_search_iterations = 50;
     double step_decrease_factor = 0.6;
     std::ostream& report_stream = std::cout;
 

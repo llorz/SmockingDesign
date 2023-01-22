@@ -105,6 +105,17 @@ def mesh_area(verts, faces):
     area += np.linalg.norm(np.cross(v2-v1, v3-v2)) / 2
   return area
 
+def get_boundary_faces(faces):
+  a = {}
+  for fid, f in enumerate(faces):
+    for i in range(3):
+      e = (f[i], f[(i+1) % 3])
+      twin_e = (e[1], e[0])
+      if twin_e in a:
+        a.pop(twin_e)
+      else:
+        a[e] = fid
+  return {v for v in a.values()}
 
 def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
     underlay_anchors = get_underlay_nodes_ids(fsp, vids, sg)
@@ -132,6 +143,7 @@ def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
 
     # Find the underlay nodes that should be constrained.
     coords = cpp_smocking_solver.bary_coords(x, uv, faces)
+    boundary_faces = get_boundary_faces(faces)
     delete_verts = []
     constraints = {}
     constraint_weight = {}
@@ -148,7 +160,7 @@ def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
         # if i not in vids:
           # continue
         v1, v2, v3 = verts[face[0]], verts[face[1]], verts[face[2]]
-        if i not in underlay_anchors:
+        if i not in underlay_anchors and f not in boundary_faces:
             mesh_pos = l1 * v1 + l2 * v2 + l3 * v3
             n = np.cross(v2-v1, v3-v2)
             n = n / np.linalg.norm(n)

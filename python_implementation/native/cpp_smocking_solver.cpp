@@ -204,4 +204,5 @@ PYBIND11_MODULE(cpp_smocking_solver, m) {
   m.def("bary_coords", &bary_coords, "Get isometry distortion.");
   m.def("prepare_arap_constraints", &prepare_constraints, "Prepare the edge constraints for ARAP");
   m.def("run_arap_step", &run_one_step, "Run one step of ARAP");
+  m.def("isometry_param", &isometry_param, "Isometry parameterization");
 }

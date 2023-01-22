@@ -4,6 +4,8 @@
 #endif
 
 #include "param.h"
+#include "utils.h"
+#include "SparseAD/include/Problem.h"
 
 #include <Eigen/Eigen>
 #include "SparseAD/include/Problem.h"
@@ -51,9 +53,27 @@ std::vector<std::vector<double>> bary_coords(
   return result;
 }
 
-std::vector<std::vector<double>> rigid_param(const std::vector<std::vector<double>>& verts,
-    const std::vector<std::vector<double>>& uv,
-    const std::vector<std::vector<int>>& faces) {
-  std::vector<std::vector<double>> result;
-  return result;
+
+std::vector<std::vector<double>> isometry_param(const std::vector<std::vector<double>>& vertices,
+const std::vector<std::vector<double>>& uv,
+const std::vector<std::vector<int>>& std_faces) {
+  Eigen::MatrixXd verts = utils::std_to_eig(vertices);
+  Eigen::MatrixXi faces = utils::std_to_eig(std_faces);
+  std::vector<Eigen::Matrix2d> frame_projections(faces.size());
+  for (int i = 0; i < std_faces.size(); i++) {
+    frame_projections[i] = utils::get_local_frame(verts, std_faces[i]).inverse();
+  }
+  
+  SparseAD::Problem prob(utils::std_to_eig(uv));
+  prob.add_sparse_energy<6>(std_faces.size(), [&]<typename T>(int i, auto& x) {
+    auto v0 = x.row(std_faces[i][0]), v1 = x.row(std_faces[i][1]), 
+    v2 = x.row(std_faces[i][2]);
+    auto e1 = v1-v0, e2 = v2-v1;
+    Eigen::Matrix2<T> mat {{e1(0), e2(0)}, {e1(1), e2(1)}};
+    Eigen::Matrix2<T> jacobian = mat * frame_projections[i];
+
+    return jacobian.squaredNorm() + jacobian.inverse().squaredNorm();
+  });
+  prob.optimize();
+  return utils::eig_to_std(prob.current());
 }
