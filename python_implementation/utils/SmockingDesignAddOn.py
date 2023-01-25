@@ -242,87 +242,6 @@ class debug_clear(Operator):
 
         return {'FINISHED'}
 
-class debug_render(Operator):
-  bl_idname = "object.debug_render"
-  bl_label = "Render the smocking design"
-  
-  def execute(self, context):
-    dt = bpy.types.Scene.solver_data
-    g_V = dt.arap_data[0]
-    max_z = g_V[2,:].max()
-    bbox_min, bbox_max = (np.amin(g_V, axis=1), np.amax(g_V, axis=1))
-    center = (bbox_max + bbox_min) / 2
-    camLocation = center
-    camLocation[2] = max_z + max((bbox_max - bbox_min)/2) + 7
-    if 'camera' in bpy.data.objects:
-      camera = bpy.data.objects['camera']
-      camera.location = camLocation
-    else:
-      bpy.ops.object.camera_add(location = camLocation)
-      camera = bpy.context.object
-      camera.name = 'camera'
-    camera.data.lens = 20
-    # Look at.
-    direction = Vector(center) - Vector(camLocation)
-    rotQuat = direction.to_track_quat('-Z', 'Y')
-    camera.rotation_euler = rotQuat.to_euler()
-    bpy.ops.render.render()
-    return {'FINISHED'}
-
-class isometric_distortion(Operator):
-  bl_idname = "object.isometric_distortion"
-  bl_label = "The isometric distortion."
-  
-  def execute(self, context):
-    dt = bpy.types.Scene.solver_data
-    # If there's an active cloth simulation.
-    if "cloth_sim_obj" in bpy.data.objects:
-      obj = bpy.data.objects["cloth_sim_obj"]
-      bpy.context.view_layer.objects.active = obj
-      grid_verts = [list(v.co) for v in obj.data.vertices]
-      bpy.ops.object.modifier_apply(modifier="Cloth")
-      deform_verts = [list(v.co) for v in obj.data.vertices]
-      faces = [list(p.vertices) for p in obj.data.polygons]
-      distortion = cpp_smocking_solver.get_isometry_distortion(grid_verts, deform_verts, faces)
-      print(distortion)
-
-    # If there's an active arap.
-    if dt.arap_data is not None and dt.arap_data[2].name in bpy.data.meshes:
-      mesh = dt.arap_data[2]
-      grid_verts = dt.arap_data[4].get_points().T
-      deform_verts = [list(v.co) for v in mesh.vertices]
-      faces = [list(p.vertices) for p in mesh.polygons]
-      distortion = cpp_smocking_solver.get_isometry_distortion(grid_verts, deform_verts, faces)
-      print(distortion)
-
-    return {'FINISHED'}
-
-class debug_print(Operator):
-    bl_idname = "object.debug_print"
-    bl_label = "print data in scene"
-    
-    def execute(self, context):
-        
-        props = bpy.types.Scene.sl_props
-        dt = bpy.types.Scene.solver_data
-        
-        usp = dt.unit_smocking_pattern
-        fsp = dt.full_smocking_pattern
-        print('--------------------------------------------------------')
-        print('- data stored in current scene:')
-        print('--------------------------------------------------------')
-        if usp and fsp:
-            usp.info()
-            fsp.info()
-            
-        else:
-            print('Import the smokcing pattern first')
-            
-                
-        return {'FINISHED'}
-
-
-
 
 class debug_func(Operator):
     bl_idname = "object.debug_func"
@@ -3447,21 +3366,6 @@ class SG_embed_graph(Operator):
         print_runtime()
 
         dt.embeded_graph = X_all
-
-        dists_diff = np.array([np.linalg.norm(X_all[i] - X_all[j])
-        - sg.return_max_dist_constraint_for_vtx_pair(i, j)
-         for i in range(len(X_all)) for j in range(len(X_all)) if i > j])
-
-        relative_violation = np.array([max(
-          np.linalg.norm(X_all[i] - X_all[j])
-        - sg.return_max_dist_constraint_for_vtx_pair(i, j)
-        , 0) / 
-        sg.return_max_dist_constraint_for_vtx_pair(i, j)
-         for i in range(len(X_all)) for j in range(len(X_all)) if i > j])
-        avg_relative_violation = np.sum(relative_violation) / len(relative_violation)
-
-        print("Violating: ", np.sum(dists_diff > 0), " out of ", len(dists_diff), " pairs")
-        print("Average violation: ", avg_relative_violation * 100, "%")
         
         return {'FINISHED'}
 
@@ -3471,40 +3375,6 @@ class SG_embed_graph(Operator):
 # ========================================================================
 #                          Draw the Panel
 # ========================================================================
-
-class debug_panel(bpy.types.Panel):
-    bl_label = "Debug :/"
-    bl_idname = "SD_PT_debug"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "SmockingDesign"
-    bl_options ={"DEFAULT_CLOSED"}
-    
-    def draw(self, context):
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False  # No animation.
-
-        c = layout.column()
-        row = c.row()
-        row.operator(debug_clear.bl_idname, text="clear everything", icon='GHOST_ENABLED')
-        row = self.layout.row()
-        row.operator(debug_print.bl_idname, text="print data in scene", icon='GHOST_ENABLED')
-        row = self.layout.row()
-        row.operator(debug_func.bl_idname, text="test function", icon="GHOST_DISABLED")
-        row = self.layout.row()
-        row.operator(RealtimeArapOperator.bl_idname, text="arap", icon="MOD_MESHDEFORM")
-        row = self.layout.row()
-        row.operator(CreateClothSimOperator.bl_idname, text="Cloth sim", icon="MOD_MESHDEFORM")
-        row = self.layout.row()
-        row.operator(DirectArapOperator.bl_idname, text="Direct smock ARAP", icon="MOD_MESHDEFORM")
-        row = self.layout.row()
-        row.operator(debug_render.bl_idname, text="Render", icon='RENDER_STILL')
-        row = self.layout.row()
-        row.operator(isometric_distortion.bl_idname, text="Show isometryic distortion", icon='RENDER_STILL')
-        row = self.layout.row()
-        row.prop(context.scene, 'if_highlight_button', toggle=False)
-
 
 class UnitGridPanel(bpy.types.Panel):
     bl_label = "Unit smocking pattern"
@@ -3540,16 +3410,6 @@ class UnitGridPanel(bpy.types.Panel):
         row.label(text="Ctrl+S to start drawing")
         row = box.row()
         row.label(text="Ctrl+D to finish drawing")
-        # if(not context.window_manager.usp_drawing_started):
-        #     row.alert=context.scene.if_highlight_button
-        # row.operator(USP_SelectStitchingPoint.bl_idname, text="Draw", icon='GREASEPENCIL')
-        # else:
-        #     row.alert=context.scene.if_highlight_button
-        #     row.operator(USP_FinishCurrentDrawing.bl_idname, text="Done", icon='CHECKMARK')
-       
-
-        # row.alert=context.scene.if_highlight_button
-        # row.operator(USP_SaveCurrentStitchingLine.bl_idname, text="Add", icon='ADD')
         
         box.row()
         row = box.row()
@@ -3846,20 +3706,6 @@ class FULLGRID_PT_edit_pattern(FullGrid_panel, bpy.types.Panel):
         row = box.row()
         row.alert = context.scene.if_highlight_button
         row.operator(FSP_FinishEditingGrid.bl_idname, text="Finish modifying grid", icon="MOD_WARP")
-        
-        # layout.label(text= "Edit the Smocking Grid")
-        # box = layout.box()
-        # box.row()
-        # box.row().prop(context.scene, 'fsp_edit_selection', expand=True)
-
-        # row = box.row()
-        # row.alert=context.scene.if_highlight_button
-        # row.operator(FSP_EditMesh_start.bl_idname, text="Edit", icon="EDITMODE_HLT")
-
-
-        # row.alert=context.scene.if_highlight_button
-        # row.operator(FSP_EditMesh_done.bl_idname, text="Done", icon="CHECKMARK")
-        # box.row()
 
         
 class FULLGRID_PT_radial_deform_panel(FullGrid_panel, bpy.types.Panel):
@@ -3933,32 +3779,11 @@ class FULLGRID_PT_export_mesh(FullGrid_panel, bpy.types.Panel):
         
         box.row().prop(context.scene, 'path_export_fullpattern')
         box.row().prop(context.scene, 'filename_export_fullpattern')
-        # box.row().prop(context.scene, 'export_format', expand=True)
         
         row = box.row()
         row.alert=context.scene.if_highlight_button
         row.operator(FSP_Export.bl_idname, text="Export", icon='EXPORT')
         box.row()
-        
-# class FULLGRID_PT_import_mesh(FullGrid_panel, bpy.types.Panel):
-#     bl_label = "Import full smocking pattern"
-#     bl_parent_id = 'SD_PT_full_grid_main'
-#     bl_options ={"DEFAULT_CLOSED"}
-    
-#     def draw(self, context):
-#       layout = self.layout
-#       layout.use_property_split = True
-#       layout.use_property_decorate = False  # No animation.
-
-#       box = layout.box()
-#       box.row()
-      
-#       box.row().prop(context.scene, 'path_import_fullpattern')
-      
-#       row = box.row()
-#       row.alert=context.scene.if_highlight_button
-#       row.operator(FSP_Import.bl_idname, text="Import", icon='IMPORT')
-#       box.row()
 
 
 
@@ -4089,40 +3914,7 @@ class Parameter_panel(bpy.types.Panel):
         row = box.row()
         # row.label(text="Optimized")
         label = "Hide optimized" if context.window_manager.if_show_embedded_graph else "Show optimized"
-        row.prop(context.window_manager, 'if_show_embedded_graph', text=label, toggle=True)  
-
-        # layout.label(text="Show the Smocked Graph")
-        # box = layout.row().box()
-        # box.row()
-        # box.row().prop(context.scene, "graph_select_type", expand=True)
-        # box.row().prop(context.scene, "graph_highlight_type", expand=True)
-        # row = box.row()
-        # row.alert=context.scene.if_highlight_button
-        # row.operator(SG_draw_graph.bl_idname, text='Visualize the Smocked Graph', icon="GREASEPENCIL")
-        # box.row()
-        
-        
-        # layout.label(text="Embed the Smocked Graph")
-        # box = layout.row().box()
-        # box.label(text="Optimization Parameters")
-        # box.row().prop(context.scene, "opti_init_type", expand=True)
-        # box.row().prop(context.scene, "opti_init_pleat_height")
-        # box.row().prop(context.scene, "opti_dist_preserve", expand=True)
-        # box.row().prop(context.scene, "opti_if_add_delaunay", expand=True)
-        # box.row().prop(context.scene, "opti_mtd")
-        # box.row().prop(context.scene, "opti_tol", slider=False)
-        # box.row().prop(context.scene, "opti_maxIter", slider=False)
-        # box.row().prop(context.scene, "opti_if_display")
-        
-
-
-
-
-        # row = box.row()
-        # row.alert=context.scene.if_highlight_button
-        # row.operator(SG_embed_graph.bl_idname, text='Embed the Smocked Graph', icon="GREASEPENCIL")
-        # box.row()
-        
+        row.prop(context.window_manager, 'if_show_embedded_graph', text=label, toggle=True) 
         
         
 # ========================================================================
@@ -4142,9 +3934,6 @@ _classes = [
     
 
     debug_clear,
-    debug_print,
-    debug_render,
-    isometric_distortion,
     debug_func,
 
     # UI panels.
@@ -4152,15 +3941,11 @@ _classes = [
 
     Parameter_panel,
 
-    # Debug.
-    # debug_panel,
     # Unit grid panel.
     UnitGridPanel,
 
     # Full smocking pattern panel.
     FULLGRID_PT_main,
-    
-    # FULLGRID_PT_tile,
     
     FULLGRID_PT_add_margin,
     FULLGRID_PT_radial_deform_panel,
@@ -4170,14 +3955,6 @@ _classes = [
     FULLGRID_PT_export_mesh,
 
     ApplicationsPanel,
-    # FULLGRID_PT_import_mesh,
-    # Embedding panel
-    # embedding_panel,
-    # Arap panel
-    # arap_panel,
-    # ArapGridPanel,
-    # CylinderArap,
-    
     
     USP_CreateGrid,
     USP_SaveCurrentStitchingLine,
