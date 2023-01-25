@@ -199,7 +199,7 @@ classdef SmockingPattern
                     plot(obj.sewingLines{i}(:,1), obj.sewingLines{i}(:,2), ...
                         'LineWidth', 2, 'Color', mycolor(obj.sewingLines_plotID(i),:));
                 end
-                title(['Complete Smocking Pattern - ', obj.patternName])
+                title(['Full Smocking Pattern - ', obj.patternName])
             elseif mode == 2
                 % add the sewing points
                 for i = 1:length(obj.sewingPtsID)
