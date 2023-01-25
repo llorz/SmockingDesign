@@ -26,11 +26,9 @@ UV = V;
 UV = UV - min(UV);
 UV = UV./max(UV(:));
 
-% initial positions
 V = [V, zeros(size(V,1), 1)];
 
-
-% triangulate the grid
+% triangulate the 
 F = [F_quad(:, 1:3); F_quad(:, [3,4,1])];
 F = F(:,[3,2,1]);
 
