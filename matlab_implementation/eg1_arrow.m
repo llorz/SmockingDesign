@@ -11,7 +11,7 @@ figure(1);  clf;
 plot_unit_pattern(usp);
 
 %% generate the full smocking pattern by tiling
-% tile the usp
+% tile the us
 numX = 3; 
 numY = 4;
 SP = SmockingPattern(usp, numX, numY);
