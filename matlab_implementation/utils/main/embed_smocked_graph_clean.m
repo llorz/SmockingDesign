@@ -68,12 +68,6 @@ if para.w_p_var > 0
     myfun_pleat = @(x) myfun_pleat(x) + para.w_p_var*energy_height_variance(reshape(x, [], 3));
 end
 
-if para.w_p_height > 0
-    vid_pleat_height = setdiff(SG.vid_pleat, SG.vid_pleat_border) - length(SG.vid_underlay);
-    myfun_pleat = @ (x) myfun_pleat(x) + para.w_p_height*energy_positive_height(x(2*length(x)/3 + vid_pleat_height));
-end
-
-
 
 x = fminunc(myfun_pleat, X_pleat_ini(:), options);
 
@@ -123,7 +117,5 @@ function fval = energy_height_variance(X)
 fval = var(X(:,3));
 end
 
-function fval = energy_positive_height(height)
-fval = sum((height <= 0));
-end
+
 

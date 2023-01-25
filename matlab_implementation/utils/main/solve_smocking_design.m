@@ -37,7 +37,6 @@ para.w_u_embed = 0;
 para.w_p_eq = 1;
 para.w_p_embed = 1e-3;
 para.w_p_var = 1e-3;
-para.w_p_height = 0;
 para.opti_display = 'off';
 para.eps_node = 0.1;
 para.grid_step = 0.1;
