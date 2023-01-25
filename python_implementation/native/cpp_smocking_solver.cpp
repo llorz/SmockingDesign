@@ -73,20 +73,24 @@ std::vector<std::vector<double>> embed_pleats(
   Eigen::MatrixXd x_pleats = std_to_eig(x_pleats_init);
   Eigen::MatrixXd x_underlay = std_to_eig(x_underlay_init);
 
-  const auto& preserve_edge_len = [&]<typename T>(int i, auto& x) {
+  const auto& edge_len_diff = [&]<typename T>(int i, auto& x) -> T {
     int a = eq_constraints[i][0], b = eq_constraints[i][1];
     double d = eq_constraints[i][2];
     // a is an underlay node.
     if (a < x_underlay_init.size() && b >= x_underlay_init.size()) {
       b -= x_underlay_init.size();
-      return sqr((x.row(b) - x_underlay.row(a)).norm() - d);
+      return ((x.row(b) - x_underlay.row(a)).norm() - d);
     } else if (b < x_underlay_init.size() && a >= x_underlay_init.size()) {
       a -= x_underlay_init.size();
-      return sqr((x.row(a) - x_underlay.row(b)).norm() - d);
+      return ((x.row(a) - x_underlay.row(b)).norm() - d);
     }
     a -= x_underlay_init.size();
     b -= x_underlay_init.size();
-    return sqr((x.row(a) - x.row(b)).norm() - d);
+    return ((x.row(a) - x.row(b)).norm() - d);
+  };
+
+  const auto& preserve_edge_len = [&]<typename T>(int i, auto& x) -> T {
+    return sqr(edge_len_diff.template operator()<T>(i, x));
   };
 
   const auto& min_var_energy = [&]<typename T>(auto& x) {
@@ -124,7 +128,7 @@ std::vector<std::vector<double>> embed_pleats(
     return -((p - p2).norm());
   };
 
-  return eig_to_std(
+  auto result = 
       SparseAD::Problem(x_pleats, SparseAD::Problem::Options {.relative_change_tolerance = 1e-4})
           // Maximize pleat-pleat distance.
           .add_sparse_energy<6>(
@@ -146,7 +150,29 @@ std::vector<std::vector<double>> embed_pleats(
               SparseAD::Energy<decltype(preserve_edge_len)>{
                   .weight = eq_weight, .provider = preserve_edge_len})
           .optimize()
-          .current());
+          .current();
+  std::cout << "Constraints violation" << std::endl;
+  int violating = 0.0;
+  double avg_violation = 0.0;
+  double avg_relative_violation = 0.0;
+  double total_eq_energy = 0.0;
+  for (int i =0 ; i < eq_constraints.size(); i++) {
+    auto diff = edge_len_diff.template operator()<double>(i, result);
+    int a = eq_constraints[i][0], b = eq_constraints[i][1];
+    double d = eq_constraints[i][2];
+    if (diff > 0.0) {
+      violating++;
+      avg_violation += diff;
+      avg_relative_violation += diff / d;
+    }
+    total_eq_energy += sqr(diff);
+    std::cout << "Diff: " << a << ", " << b << ": " << diff << std::endl;
+  }
+  std::cout << "Total of " << violating << " violated out of " << eq_constraints.size() << " constraints" << std::endl;
+  std::cout << "Average violation: " << avg_violation / violating << ", average relative violation: "
+  << avg_relative_violation / eq_constraints.size() * 100 << "%" << std::endl;
+  std::cout << "Total pleat eq energy: " << total_eq_energy << std::endl;
+  return eig_to_std(result);
 }
 
 Eigen::Matrix2d get_local_frame(const Eigen::MatrixXd& verts,

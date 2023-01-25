@@ -99,6 +99,8 @@ class Dual {
 
   friend Dual operator-(const Dual& a);
   friend Dual operator-(Dual&& a);
+  friend Dual operator+(const Dual& a);
+  friend Dual operator+(Dual&& a);
   friend Dual sqrt(const Dual& a);
   friend Dual sqrt(Dual&& a);
   friend Dual sqr(const Dual& a);

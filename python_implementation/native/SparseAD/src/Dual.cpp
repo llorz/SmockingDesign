@@ -282,6 +282,14 @@ Dual operator-(Dual&& a) {
   a.neg();
   return a;
 }
+Dual operator+(const Dual& a) {
+  Dual res(a);
+  res.projectHessian();
+  return res;
+}
+Dual operator+(Dual&& a) {
+  return a.projectHessian();
+}
 Dual sqrt(const Dual& a) {
   const auto& sqrt_a = std::sqrt(a._val);
   return a.chain(sqrt_a, 0.5 / sqrt_a, -0.25 / (sqrt_a * a._val));

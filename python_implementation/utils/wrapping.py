@@ -160,7 +160,11 @@ def get_constraints_from_param_bary(x, vids, fsp, sg, uv, verts, faces):
         # if i not in vids:
           # continue
         v1, v2, v3 = verts[face[0]], verts[face[1]], verts[face[2]]
-        if i not in underlay_anchors and f not in boundary_faces:
+        if f in boundary_faces:
+          constraint_weight[i] = 1000
+          constraints[i] = l1 * v1 + l2 * v2 + l3 * v3
+          continue
+        if i not in underlay_anchors:
             mesh_pos = l1 * v1 + l2 * v2 + l3 * v3
             n = np.cross(v2-v1, v3-v2)
             n = n / np.linalg.norm(n)

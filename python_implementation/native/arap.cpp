@@ -6,6 +6,7 @@
 #include "SparseAD/include/Problem.h"
 #include <Eigen/Eigen>
 #include <unordered_set>
+#include <unordered_map>
 #include "arap.h"
 #include <type_traits>
 
@@ -144,4 +145,56 @@ MAT prepare_constraints(
     }
 
     return edge_constraints;
+  }
+
+  std::vector<std::vector<double>> run_simulation(
+    const std::vector<std::vector<double>>& orig_vertices,
+  const std::vector<std::vector<double>>& vertices,
+  const std::vector<std::vector<int>>& faces,
+  const std::vector<std::vector<double>>& constraints,
+  double w_edge,
+  double w_constraints,
+  double w_gravity) {
+    Eigen::MatrixXd verts = std_to_eig(vertices);
+    Eigen::MatrixXd orig_verts = std_to_eig(orig_vertices);
+
+    std::vector<std::unordered_set<int>> neighbors(vertices.size());
+    for (int i = 0; i < faces.size(); i++) {
+      for (int j = 0; j < 3; j++) {
+        neighbors[faces[i][j]].insert(faces[i][(j + 1) % 3]);
+        neighbors[faces[i][(j+1) % 3]].insert(faces[i][j]);
+      }
+    }
+    std::unordered_map<int, int> constraint_indices;
+    for (int i = 0; i < constraints.size(); i++) {
+      constraint_indices[(int)constraints[i][0]] = i;
+    }
+
+    auto func = [&]<typename T>(int i, auto& x) {
+      const auto& iter = constraint_indices.find(i);
+      if (iter != constraint_indices.end()) {
+        auto c = constraints[iter->second];
+        int v0 = c[0];
+        Eigen::Vector3d pos {c[1], c[2], c[3]};
+        T res = w_constraints * (x.row(v0) - pos).squaredNorm();
+        return +res;
+      }
+      T energy = 0.0;
+      Eigen::Vector3<T> cur = x.row(i);
+      Eigen::Vector3d original_cur = orig_verts.row(i);
+      for (auto& n : neighbors[i]) {
+        Eigen::Vector3d loc = orig_verts.row(n);
+        double dist = (loc- original_cur).norm();
+        energy += +SparseAD::sqr((cur - x.row(n)).norm() - dist);
+      }
+      return energy;
+    };
+
+    SparseAD::Problem prob(verts, SparseAD::Problem::Options {.num_iterations = 3});
+    prob.add_sparse_energy(vertices.size(), SparseAD::Energy<decltype(func)> {
+      .project_hessian = false,
+      .provider = func
+  });
+
+    return eig_to_std(prob.optimize().current());
   }
