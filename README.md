@@ -1,12 +1,18 @@
-# SmockingDesign
+# Digial 3D Smocking Design
+This is an example code for our paper "Digital 3D Smocking Design", by [Jing Ren](https://ren-jing.com/), [Aviv Segall](https://igl.ethz.ch/people/), and [Olga Sorkine-Hornung](https://igl.ethz.ch/people/sorkine).
 
-We develop an optimization-based method to model smocking, a surface embroidery technique that provides decorative geometric texturing while maintaining stretch properties of the fabric. During smocking, multiple pairs of points on the fabric are stitched together, creating non-manifold geometric features and visually pleasing textures. Designing smocking patterns is challenging, because the outcome of stitching is unpredictable: the final texture is often revealed only when the whole smocking process is completed, necessitating painstaking physical fabrication and time consuming trial-and-error experimentation. This motivates us to seek a digital smocking design method. Straightforward attempts to compute smocked fabric geometry using surface deformation or cloth simulation methods fail to produce realistic results, likely due to the intricate structure of the designs, the large number of contacts and high-curvature folds. We instead formulate smocking as a graph embedding and shape deformation problem. We extract a coarse graph representing the fabric and the stitching constraints, and then derive the graph structure of the smocked result. We solve for the 3D embedding of this graph, which in turn reliably guides the deformation of the high-resolution fabric mesh. Our optimization based method is simple, efficient, and flexible, which allows us to build an interactive system for smocking pattern exploration. To demonstrate the accuracy of our method, we compare our results to real fabrications on a large set of smocking patterns.
+In this project, we develop an optimization-based method to model smocking, a surface embroidery technique that provides decorative geometric texturing while maintaining stretch properties of the fabric. We formulate smocking as a **graph embedding** and **shape deformation** problem. We extract a coarse graph representing the fabric and the stitching constraints, and then derive the graph structure of the smocked result. We solve for the 3D embedding of this graph, which in turn reliably guides the deformation of the high-resolution fabric mesh.
+
+You can find more details at: [[paper]]() | [[suppl. video]]() |  [[suppl. material]]() | [[slides]]() |
+
+## What is smocking?
+We develop an optimization-based method to model smocking, a surface embroidery technique that provides decorative geometric texturing while maintaining stretch properties of the fabric. During smocking, multiple pairs of points on the fabric are stitched together, creating non-manifold geometric features and visually pleasing textures. Designing smocking patterns is challenging, because the outcome of stitching is unpredictable: the final texture is often revealed only when the whole smocking process is completed, necessitating painstaking physical fabrication and time consuming trial-and-error experimentation. 
 
 
 
 
 
-## References:
+### References:
 - Exibition: [A smocked child's garment (1900-1905)](https://www.metmuseum.org/art/collection/search/157326), from *Liverty & Co*
 - Exibition: [Smocked garments in 19th Century](https://www.reading.ac.uk/merl/the_collections/the_museum/smocks.html) exibited in *The Musuem of English Rural life*
 - Book: ["Stitching for Style: Fabric Manipulation for Self-Trim"](https://www.amazon.com/Stitching-style-Fabric-manipulation-self/dp/B0007E68JQ/ref=sr_1_3?qid=1671114643&refinements=p_27%3ANelle+Weymouth+Link&s=books&sr=1-3&text=Nelle+Weymouth+Link), by *Nelle Weymouth Link*, 1948
