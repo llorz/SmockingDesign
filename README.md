@@ -12,7 +12,7 @@ You can find more details at: [[paper]]() | [[suppl. video]]() |  [[suppl. mater
 Below we show an example of fabricating the arrow smocking pattern: we first draw the smocking pattern in the fabric (*left*); then we stitch each polyline individually, where are the grid nodes in the polyline are gathered and stitched together (*middle*). We also show its front view on the *right*, where we can see that the stitches are not visible and the resulting textures are volumetric.
 | draw stitching pattern | stitching (back view) | stitching (front view)|
 | :---: | :---: | :---: |
-| <img src="./figs/arrow_pattern.gif" alt="arrow pattern" width="300" loop="true"/> |  <img src="./figs/bright_back.gif" alt="back view"  width="300" loop="true" />  |  <img src="./figs/bright_front.gif" alt="front view"  width="300" loop="true" />   |
+| <img src="./figs/arrow_pattern.gif" alt="arrow pattern" width="150" loop="true"/> |  <img src="./figs/bright_back.gif" alt="back view"  width="150" loop="true" />  |  <img src="./figs/bright_front.gif" alt="front view"  width="150" loop="true" />   |
 
 
 
@@ -42,6 +42,6 @@ If you are interested, you might find the following **references** helpful:
 -
 
 ## Comments
-- Please let us know (jing.ren@inf.ethz.ch, aviv.segall@inf.ethz.ch) if you have any question regarding the algorithms/paper or you find any bugs in the code ε-(´∀｀; )
+- Please let us know (jing.ren, aviv.segall, @inf.ethz.ch) if you have any question regarding the algorithms/paper or you find any bugs in the code ε-(´∀｀; )
 - This work is licensed under a [Creative Commons Attribution-NonCommercial 4.0 International License](http://creativecommons.org/licenses/by-nc/4.0/). For any commercial uses or derivatives, please contact us (jing.ren, aviv.segall, sorkine, @inf.ethz.ch). [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
