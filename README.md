@@ -12,7 +12,7 @@ You can find more details at: [[paper]]() | [[suppl. video]]() |  [[suppl. mater
 Below we show an example of fabricating the arrow smocking pattern: we first draw the smocking pattern in the fabric (*left*); then we stitch each polyline individually, where are the grid nodes in the polyline are gathered and stitched together (*middle*). We also show its front view on the *right*, where we can see that the stitches are not visible and the resulting textures are volumetric.
 | draw stitching pattern | stitching (back view) | stitching (front view)|
 | :---: | :---: | :---: |
-| <img src="./figs/arrow_pattern.gif" alt="arrow pattern" width="150" loop="true"/> |  <img src="./figs/bright_back.gif" alt="back view"  width="150" loop="true" />  |  <img src="./figs/bright_front.gif" alt="front view"  width="150" loop="true" />   |
+| <img src="./figs/arrow_pattern.gif" alt="arrow pattern" width="200" loop="true"/> |  <img src="./figs/bright_back.gif" alt="back view"  width="200" loop="true" />  |  <img src="./figs/bright_front.gif" alt="front view"  width="200" loop="true" />   |
 
 
 
