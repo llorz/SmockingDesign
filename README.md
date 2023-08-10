@@ -36,12 +36,18 @@ If you are interested, you might find the following **references** helpful:
 - **Blender Add-on**:
 - **Matlab prototype**:
 
-## Acknowledgements
-- The authors thank the anonymous reviewers for their valuable comments. 
--
--
 
 ## Comments
-- Please let us know (jing.ren, aviv.segall, @inf.ethz.ch) if you have any question regarding the algorithms/paper or you find any bugs in the code ε-(´∀｀; )
-- This work is licensed under a [Creative Commons Attribution-NonCommercial 4.0 International License](http://creativecommons.org/licenses/by-nc/4.0/). For any commercial uses or derivatives, please contact us (jing.ren, aviv.segall, sorkine, @inf.ethz.ch). [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
+### Baseline methods
+1. **C-IPC: Codimensional Incremental Potential Contact**, Minchen Li, Danny M. Kaufman, Chenfanfu Jiang, *ACM Transactions on Graphics (SIGGRAPH 2021)* [ [code] ](https://github.com/ipc-sim/Codim-IPC)
+2. **ARCSim: Adaptive Refining and Coarsening Simulator**, Rahul Narain, Armin Samii, and James F O’brien, *ACM Transactions on Graphics (SIGGRAPH 2012)*  [[original code]](http://graphics.berkeley.edu/resources/ARCSim/) [[code we used]](https://git.ista.ac.at/gsperl/ARCSim-HYLC)
+3. **Commercial softwares**: [Blender](https://www.blender.org/) and [Marvelous Designer](https://marvelousdesigner.com/)
+
+### Acknowledgements
+The authors thank the anonymous reviewers for their valuable comments. 
+We would like to thank ***Minchen Li*** for helping with the comparison to C-IPC. We also thank ***Georg Sperl*** and ***Rahul Narain*** for helping with the comparison to ARCSim.
+
+### Contact
+Please let us know (jing.ren, aviv.segall, @inf.ethz.ch) if you have any question regarding the algorithms/paper or you find any bugs in the code ε-(´∀｀; )
+This work is licensed under a [Creative Commons Attribution-NonCommercial 4.0 International License](http://creativecommons.org/licenses/by-nc/4.0/). For any commercial uses or derivatives, please contact us (jing.ren, aviv.segall, sorkine, @inf.ethz.ch). [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
