@@ -36,6 +36,14 @@ If you are interested, you might find the following **references** helpful:
 - **Blender Add-on**:
 - **Matlab prototype**:
 
+### Results v.s. Fabrications
+| name  | arrow |  box  | braid | leaf | basket |
+| :---: | :---: | :---: | :---: | :---:| :---:  |
+| our results | <img src="./figs/res/arrow.png"  width="200" />| <img src="./figs/res/box.png"  width="200" />| <img src="./figs/res/braid.png"  width="200" />|  <img src="./figs/res/leaf.png"  width="200" />|  <img src="./figs/res/basket.png"  width="200" />| 
+| name  |zigzag | triangle | diamond | brick | flower |
+| our results | <img src="./figs/res/zigzag.png"  width="200" />|  <img src="./figs/res/triangle.png"  width="200" />|  <img src="./figs/res/diamond.png"  width="200" />|  <img src="./figs/res/brick.png"  width="200" />|  <img src="./figs/res/flower.png"  width="200" />|
+
+(note: the pattern names are not well defined)
 
 ## Comments
 ### Baseline methods
