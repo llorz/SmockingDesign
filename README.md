@@ -37,11 +37,16 @@ If you are interested, you might find the following **references** helpful:
 - **Matlab prototype**:
 
 ### Results v.s. Fabrications
-| name  | arrow |  box  | braid | leaf | basket |
+| name  | arrow |  box  | triangle | leaf | basket |
 | :---: | :---: | :---: | :---: | :---:| :---:  |
-| our results | <img src="./figs/res/arrow.png"  width="200" />| <img src="./figs/res/box.png"  width="200" />| <img src="./figs/res/braid.png"  width="200" />|  <img src="./figs/res/leaf.png"  width="200" />|  <img src="./figs/res/basket.png"  width="200" />| 
-| name  |zigzag | triangle | diamond | brick | flower |
-| our results | <img src="./figs/res/zigzag.png"  width="200" />|  <img src="./figs/res/triangle.png"  width="200" />|  <img src="./figs/res/diamond.png"  width="200" />|  <img src="./figs/res/brick.png"  width="200" />|  <img src="./figs/res/flower.png"  width="200" />|
+| our results | <img src="./figs/res/arrow.png"  width="200" />| <img src="./figs/res/box.png"  width="200" />| <img src="./figs/res/triangle.png"  width="200" />|  <img src="./figs/res/leaf.png"  width="200" />|  <img src="./figs/res/basket.png"  width="200" />| 
+| real fabrications  |  [YouTube link](https://www.youtube.com/watch?v=W7dUpMPPVfQ)  | see our paper  | [YouTube link](https://www.youtube.com/watch?v=arIAkrwxxmI) | [YouTube link](https://www.youtube.com/watch?v=xhgMBxavd0s)  | [YouTube link](https://www.youtube.com/watch?v=6jOuF65d3zw) |
+
+
+| name  |zigzag | braid | diamond | brick | flower |
+| :---: | :---: | :---: | :---: | :---:| :---:  |
+| our results | <img src="./figs/res/zigzag.png"  width="200" />|  <img src="./figs/res/braid.png"  width="200" />|  <img src="./figs/res/diamond.png"  width="200" />|  <img src="./figs/res/brick.png"  width="200" />|  <img src="./figs/res/flower.png"  width="200" />|
+| real fabrications  | [YouTube link](https://www.youtube.com/watch?v=hQ0XvybPnYI)  | [YouTube link](https://www.youtube.com/watch?v=Ju8Q48D10V4) | see our paper | [Pinterest] | [YouTube link](https://www.youtube.com/watch?v=cVM75PL3RLQ) |
 
 (note: the pattern names are not well defined)
 
