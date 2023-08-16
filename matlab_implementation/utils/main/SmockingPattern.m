@@ -165,7 +165,7 @@ classdef SmockingPattern
             lid = find(cellfun(@(sl)sum(ismember(sl, vid)), obj.sewingPtsID));
         end
 
-        function obj = categorize_grid_edges(obj)
+        function obj = categorize_edges(obj)
             vid = obj.all_sewingPts;
             % cate-1: edge not connected to any sewing points
             % cate-2: only one endpoint of the edge is a sewing points
@@ -173,13 +173,13 @@ classdef SmockingPattern
             % belong to the same unit (i.e., these edges will be folded)
             % cate-4: two endpoints of the edge are sewing points belonging
             % to different units (i.e. the supporting edges which are rigid!)
-            tmp = sum(ismember(obj.grid_E, vid),2);
-            obj.edge_cid = 3*ones(size(obj.grid_E, 1), 1);
+            tmp = sum(ismember(obj.E, vid),2);
+            obj.edge_cid = 3*ones(size(obj.E, 1), 1);
             obj.edge_cid(tmp == 0) = 1; % cate-1
             obj.edge_cid(tmp == 1) = 2; % cate-2
             eids = find(tmp == 2); % we need seperate cate-3 and cate-4
             tmp = arrayfun(@(eid) ...
-                isempty(find(cellfun(@(sewingLine) sum(ismember(obj.grid_E(eid,:), sewingLine)), obj.sewingPtsID) == 2, 1)),...
+                isempty(find(cellfun(@(sewingLine) sum(ismember(obj.E(eid,:), sewingLine)), obj.sewingPtsID) == 2, 1)),...
                 eids);  % check if two endpoints belong to the same unit
             obj.edge_cid(eids(tmp)) = 4;
         end
@@ -208,7 +208,7 @@ classdef SmockingPattern
                 title('Sewing Points')
             elseif mode == 3
 
-                obj = obj.categorize_grid_edges();
+                obj = obj.categorize_edges();
                 % plot the grid edges w.r.t. their category
                 for i = 1:size(obj.grid_E,1)
                     if obj.edge_cid(i) == 4
