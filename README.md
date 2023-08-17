@@ -27,8 +27,16 @@ If you are interested, you might find the following **references** helpful:
 - Tutorial: [Canadian Smocking Tutorial (Heart Shaped Pattern)](https://www.youtube.com/watch?v=WCcrPTtcH-s) by YouTuber *OV'S COUTURE*.
 
 ## How do we model smocking?
+### Extract the smocked graph
+We first extract the ***smocked graph*** from the input smocking pattern in the following steps:
+1. merge each stitching line into a single node (see the animation below)
+2. remove redundant/degenerated edges
+3. we compute the distances $d_{i,j}$ between the nodes in the smocked graph that are modified by the sewing process
+   
+<img src="./figs/arrow_smocked_graph.gif" alt="arrow pattern" width="400" loop="true"/>
 
-### Embed the Smocked graph
+### Embed the smocked graph
+
 
 ### Deform the fabric using as-rigid-as-possible (ARAP)
 
@@ -48,7 +56,6 @@ If you are interested, you might find the following **references** helpful:
 | our results | <img src="./figs/res/zigzag.png"  width="200" />|  <img src="./figs/res/braid.png"  width="200" />|  <img src="./figs/res/diamond.png"  width="200" />|  <img src="./figs/res/brick.png"  width="200" />|  <img src="./figs/res/flower.png"  width="200" />|
 | real fabrications  | [YouTube link](https://www.youtube.com/watch?v=hQ0XvybPnYI)  | [YouTube link](https://www.youtube.com/watch?v=Ju8Q48D10V4) | see our paper | [Pinterest](https://www.pinterest.ch/pin/56506170339464885/) | [YouTube link](https://www.youtube.com/watch?v=cVM75PL3RLQ) |
 
-(note: the pattern names are not well defined)
 
 ## Comments
 ### Baseline methods
