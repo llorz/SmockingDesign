@@ -27,18 +27,15 @@ If you are interested, you might find the following **references** helpful:
 - Tutorial: [Canadian Smocking Tutorial (Heart Shaped Pattern)](https://www.youtube.com/watch?v=WCcrPTtcH-s) by YouTuber *OV'S COUTURE*.
 
 ## How do we model smocking?
-### Extract the smocked graph
-We first extract the ***smocked graph*** from the input smocking pattern in the following steps:
-1. merge each stitching line into a single node (see the animation below)
-2. remove redundant/degenerated edges
-3. we compute the distances $d_{i,j}$ between the nodes in the smocked graph that are modified by the sewing process
-   
+1. Take the input smocking pattern as a coarse graph representation of a piece of fabric
+2. **Extract the smocked graph**
+   - merge each stitching line from the input smocking pattern into a single node;
+   - remove reduandant or degenerated edges;
+   - compute the distances $d_{i,j}$ between the nodes in the smocked graph that are modified by the sewing process
 <img src="./figs/arrow_smocked_graph.gif" alt="arrow pattern" width="400" loop="true"/>
+3. Embed the smocked graph 
+4. Deform the fabric using ARAP
 
-### Embed the smocked graph
-
-
-### Deform the fabric using as-rigid-as-possible (ARAP)
 
 ### Implementation
 - **Blender Add-on**:
