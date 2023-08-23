@@ -6,4 +6,4 @@ We also provide a matlab implementation for smocking design preview.
 
 ## Experiments
 - ```eg1_arrow.m```: shows an example of running our algorithm for the arrow pattern
-```eg2_smocked_graph.m```: shows how the smocked graph before and after embedding look like
+- ```eg2_smocked_graph.m```: shows how the smocked graph before and after embedding look like
