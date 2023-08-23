@@ -46,13 +46,13 @@ If you are interested, you might find the following **references** helpful:
 - [Blender Add-on](https://github.com/llorz/SmockingDesign/blob/main/python_implementation/utils/SmockingDesignAddOn.py): we provide a blender add-on, which can be used for designing/modifying smocking patterns and previewing the corresponding smocked design
 - [Matlab prototype](https://github.com/llorz/SmockingDesign/tree/main/matlab_implementation): we also provide a matlab implementation for smocking design preview.
 
-
-## Comments
 ### Baseline methods
 1. **C-IPC: Codimensional Incremental Potential Contact**, Minchen Li, Danny M. Kaufman, Chenfanfu Jiang, *ACM Transactions on Graphics (SIGGRAPH 2021)* [ [code] ](https://github.com/ipc-sim/Codim-IPC)
 2. **ARCSim: Adaptive Refining and Coarsening Simulator**, Rahul Narain, Armin Samii, and James F O’brien, *ACM Transactions on Graphics (SIGGRAPH 2012)*  [[original code]](http://graphics.berkeley.edu/resources/ARCSim/) [[code we used]](https://git.ista.ac.at/gsperl/ARCSim-HYLC)
 3. **Commercial softwares**: [Blender](https://www.blender.org/) and [Marvelous Designer](https://marvelousdesigner.com/)
 
+
+## Comments
 ### Acknowledgements
 The authors thank the anonymous reviewers for their valuable comments. 
 We would like to thank ***Minchen Li*** for helping with the comparison to C-IPC. We also thank ***Georg Sperl*** and ***Rahul Narain*** for helping with the comparison to ARCSim.
