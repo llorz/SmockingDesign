@@ -26,22 +26,10 @@ If you are interested, you might find the following **references** helpful:
 - Magazines: ["Origami Tessellation Style Modern Smocking Pattern vol.1-6"](https://www.amazon.com/Origami-tessellation-modern-smocking-pattern/dp/B09PK4DHQR/ref=sr_1_2?crid=23GWCMNYDI3Y0&keywords=modern+smocking+pattern&qid=1671115873&s=books&sprefix=modern+smocking+pattern%2Cstripbooks-intl-ship%2C142&sr=1-2), by *MsKapolo Design*, 2021
 - Tutorial: [Canadian Smocking Tutorial (Heart Shaped Pattern)](https://www.youtube.com/watch?v=WCcrPTtcH-s) by YouTuber *OV'S COUTURE*.
 
-## How do we model smocking?
-1. Take the input smocking pattern as a coarse graph representation of a piece of fabric
-2. **Extract the smocked graph**
-   - merge each stitching line from the input smocking pattern into a single node;
-   - remove reduandant or degenerated edges;
-   - compute the distances $d_{i,j}$ between the nodes in the smocked graph that are modified by the sewing process
-<img src="./figs/arrow_smocked_graph.gif" alt="arrow pattern" width="400" loop="true"/>
-3. Embed the smocked graph 
-4. Deform the fabric using ARAP
 
 
-### Implementation
-- **Blender Add-on**:
-- **Matlab prototype**:
 
-### Results v.s. Fabrications
+## Our results v.s. Fabrications
 | name  | arrow |  box  | triangle | leaf | basket |
 | :---: | :---: | :---: | :---: | :---:| :---:  |
 | our results | <img src="./figs/res/arrow.png"  width="200" />| <img src="./figs/res/box.png"  width="200" />| <img src="./figs/res/triangle.png"  width="200" />|  <img src="./figs/res/leaf.png"  width="200" />|  <img src="./figs/res/basket.png"  width="200" />| 
@@ -52,6 +40,11 @@ If you are interested, you might find the following **references** helpful:
 | :---: | :---: | :---: | :---: | :---:| :---:  |
 | our results | <img src="./figs/res/zigzag.png"  width="200" />|  <img src="./figs/res/braid.png"  width="200" />|  <img src="./figs/res/diamond.png"  width="200" />|  <img src="./figs/res/brick.png"  width="200" />|  <img src="./figs/res/flower.png"  width="200" />|
 | real fabrications  | [YouTube link](https://www.youtube.com/watch?v=hQ0XvybPnYI)  | [YouTube link](https://www.youtube.com/watch?v=Ju8Q48D10V4) | see our paper | [Pinterest](https://www.pinterest.ch/pin/56506170339464885/) | [YouTube link](https://www.youtube.com/watch?v=cVM75PL3RLQ) |
+
+
+### Implementation
+- [Blender Add-on](https://github.com/llorz/SmockingDesign/blob/main/python_implementation/utils/SmockingDesignAddOn.py): we provide a blender add-on, which can be used for designing/modifying smocking patterns and previewing the corresponding smocked design
+- [Matlab prototype](https://github.com/llorz/SmockingDesign/tree/main/matlab_implementation): we also provide a matlab implementation for smocking design preview.
 
 
 ## Comments
