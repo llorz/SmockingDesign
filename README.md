@@ -26,17 +26,10 @@ If you are interested, you might find the following **references** helpful:
 - Magazines: ["Origami Tessellation Style Modern Smocking Pattern vol.1-6"](https://www.amazon.com/Origami-tessellation-modern-smocking-pattern/dp/B09PK4DHQR/ref=sr_1_2?crid=23GWCMNYDI3Y0&keywords=modern+smocking+pattern&qid=1671115873&s=books&sprefix=modern+smocking+pattern%2Cstripbooks-intl-ship%2C142&sr=1-2), by *MsKapolo Design*, 2021
 - Tutorial: [Canadian Smocking Tutorial (Heart Shaped Pattern)](https://www.youtube.com/watch?v=WCcrPTtcH-s) by YouTuber *OV'S COUTURE*.
 
-## How do we model smocking?
 
-### Embed the Smocked graph
 
-### Deform the fabric using as-rigid-as-possible (ARAP)
 
-### Implementation
-- **Blender Add-on**:
-- **Matlab prototype**:
-
-### Results v.s. Fabrications
+## Our results v.s. Fabrications
 | name  | arrow |  box  | triangle | leaf | basket |
 | :---: | :---: | :---: | :---: | :---:| :---:  |
 | our results | <img src="./figs/res/arrow.png"  width="200" />| <img src="./figs/res/box.png"  width="200" />| <img src="./figs/res/triangle.png"  width="200" />|  <img src="./figs/res/leaf.png"  width="200" />|  <img src="./figs/res/basket.png"  width="200" />| 
@@ -48,14 +41,18 @@ If you are interested, you might find the following **references** helpful:
 | our results | <img src="./figs/res/zigzag.png"  width="200" />|  <img src="./figs/res/braid.png"  width="200" />|  <img src="./figs/res/diamond.png"  width="200" />|  <img src="./figs/res/brick.png"  width="200" />|  <img src="./figs/res/flower.png"  width="200" />|
 | real fabrications  | [YouTube link](https://www.youtube.com/watch?v=hQ0XvybPnYI)  | [YouTube link](https://www.youtube.com/watch?v=Ju8Q48D10V4) | see our paper | [Pinterest](https://www.pinterest.ch/pin/56506170339464885/) | [YouTube link](https://www.youtube.com/watch?v=cVM75PL3RLQ) |
 
-(note: the pattern names are not well defined)
 
-## Comments
+### Implementation
+- [Blender Add-on](https://github.com/llorz/SmockingDesign/blob/main/python_implementation/utils/SmockingDesignAddOn.py): we provide a blender add-on, which can be used for designing/modifying smocking patterns and previewing the corresponding smocked design
+- [Matlab prototype](https://github.com/llorz/SmockingDesign/tree/main/matlab_implementation): we also provide a matlab implementation for smocking design preview.
+
 ### Baseline methods
 1. **C-IPC: Codimensional Incremental Potential Contact**, Minchen Li, Danny M. Kaufman, Chenfanfu Jiang, *ACM Transactions on Graphics (SIGGRAPH 2021)* [ [code] ](https://github.com/ipc-sim/Codim-IPC)
 2. **ARCSim: Adaptive Refining and Coarsening Simulator**, Rahul Narain, Armin Samii, and James F O’brien, *ACM Transactions on Graphics (SIGGRAPH 2012)*  [[original code]](http://graphics.berkeley.edu/resources/ARCSim/) [[code we used]](https://git.ista.ac.at/gsperl/ARCSim-HYLC)
 3. **Commercial softwares**: [Blender](https://www.blender.org/) and [Marvelous Designer](https://marvelousdesigner.com/)
 
+
+## Comments
 ### Acknowledgements
 The authors thank the anonymous reviewers for their valuable comments. 
 We would like to thank ***Minchen Li*** for helping with the comparison to C-IPC. We also thank ***Georg Sperl*** and ***Rahul Narain*** for helping with the comparison to ARCSim.
