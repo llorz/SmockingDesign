@@ -3,7 +3,7 @@ This is an example code for our paper "Digital 3D Smocking Design", by [Jing Ren
 
 In this project, we develop an optimization-based method to model smocking, a surface embroidery technique that provides decorative geometric texturing while maintaining stretch properties of the fabric. We formulate smocking as a **graph embedding** and **shape deformation** problem. We extract a coarse graph representing the fabric and the stitching constraints, and then derive the graph structure of the smocked result. We solve for the 3D embedding of this graph, which in turn reliably guides the deformation of the high-resolution fabric mesh.
 
-You can find more details at: [[paper]]() | [[suppl. video]]() |  [[suppl. material]]() | [[slides]]() 
+You can find more details at: [[project page]](https://igl.ethz.ch/projects/smockingdesign/) | [[paper]](https://arxiv.org/abs/2309.07201) | [[suppl. video]](https://youtu.be/GNWhDYsAXiM) |  [[suppl. material]](https://youtu.be/vjnmbmO3zcg) | [[slides]](http://llorz.github.io/files/slides_23_TOG_smocking.pdf) 
 
 ## What is smocking?
 **Smocking** is a *surface embroidery* technique that provides decorative geometric texturing while maintaining stretch properties of the fabric. During smocking, multiple pairs of points on the fabric are stitched together, creating non-manifold geometric features and visually pleasing textures. Designing smocking patterns is challenging, because the outcome of stitching is unpredictable: the final texture is often revealed only when the whole smocking process is completed, necessitating painstaking physical fabrication and time consuming trial-and-error experimentation. 
@@ -54,8 +54,10 @@ If you are interested, you might find the following **references** helpful:
 
 ## Comments
 ### Acknowledgements
-The authors thank the anonymous reviewers for their valuable comments. 
-We would like to thank ***Minchen Li*** for helping with the comparison to C-IPC. We also thank ***Georg Sperl*** and ***Rahul Narain*** for helping with the comparison to ARCSim.
+The authors express gratitude to the anonymous reviewers for their valuable feedback. 
+Special thanks to ***Minchen Li*** for his help with the comparison to C-IPC, ***Georg Sperl*** and ***Rahul Narain*** for their help with the comparison to ARCSim, and to ***Libo Huang*** and ***Jiong Chen*** for helpful discussions. Appreciation goes to ***Danielle Luterbacher*** and ***Sigrid Carl*** for their sewing advice. 
+The authors also extend their thanks to ***all IGL members*** for their time and support. 
+This work was supported in part by the ERC Consolidator Grant No. 101003104 (MYCLOTH).
 
 ### Contact
 Please let us know (jing.ren, aviv.segall, @inf.ethz.ch) if you have any question regarding the algorithms/paper or you find any bugs in the code ε-(´∀｀; )
