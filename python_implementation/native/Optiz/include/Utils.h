@@ -10,7 +10,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Complex.h"
 #include "Var.h"
 #include "VarFactory.h"
 #include "TDenseVar.h"

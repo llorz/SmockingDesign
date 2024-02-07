@@ -19,8 +19,9 @@ execute_process(COMMAND python3.10 -m pybind11 --include OUTPUT_STRIP_TRAILING_W
 # Proper way to generate the link flags, doesn't work for the python release in Blender.
 # execute_process(COMMAND python3-config --ldflags OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE PYTHON_LD_FLAGS)
 
+if (APPLE)
 set(PYTHON_LD_FLAGS "-ldl   -framework CoreFoundation -L/Applications/Blender.app/Contents/Resources/4.0/python/lib/python3.10/config-3.10-darwin")
-
+endif()
 # Get compilation flags.
 execute_process(COMMAND python3.10-config --cflags OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE PYTHON_CFLAGS)
 # And the output suffix.
