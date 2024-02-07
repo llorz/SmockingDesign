@@ -29,13 +29,34 @@ execute_process(COMMAND python3.10-config --extension-suffix OUTPUT_STRIP_TRAILI
 #-flto=thin
 SET ( CMAKE_CXX_FLAGS "-Xlinker -undefined -Xlinker dynamic_lookup  -fPIC ${CMAKE_CXX_FLAGS} ${PYBIND_INCLUDE} ${PYTHON_LD_FLAGS} ${PYTHON_CFLAGS}")
 
-# The proper way to handle warnings (ignore them).
 add_definitions(-w)
 
-find_package(OpenMP REQUIRED)
-find_package(Eigen3 REQUIRED NO_MODULE)
+find_package(OpenMP QUIET)
+if (TARGET OpenMP::OpenMP_CXX)
+  target_link_libraries(${PROJECT_NAME} PRIVATE OpenMP::OpenMP_CXX)
+else()
+  message(WARNING "OpenMP not found, building without it.")
+endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE OpenMP::OpenMP_CXX Eigen3::Eigen)
+# Search for Eigen.
+find_package(Eigen3 QUIET)
+if (NOT TARGET Eigen3::Eigen)
+  # Eigen not found, fetch it from gitlab.
+  FetchContent_Declare(
+    Eigen
+    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+    GIT_TAG        3.4.0
+  )
+
+  FetchContent_GetProperties(Eigen)
+  if(NOT eigen_POPULATED)
+    FetchContent_Populate(Eigen)
+    add_subdirectory(${eigen_SOURCE_DIR} ${eigen_BINARY_DIR} EXCLUDE_FROM_ALL)
+    set_property(DIRECTORY ${eigen_SOURCE_DIR} PROPERTY EXCLUDE_FROM_ALL YES)
+  endif()
+endif()
+
+target_link_libraries(${PROJECT_NAME} PRIVATE Eigen3::Eigen)
 set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "cpp_smocking_solver")
 set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ${OUTPUT_SUFFIX})

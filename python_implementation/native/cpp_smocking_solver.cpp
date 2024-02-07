@@ -90,21 +90,6 @@ std::vector<std::vector<double>> embed_pleats(
     return eq_weight * sqr(edge_len_diff.template operator()<T>(i, x));
   };
 
-  const auto& min_var_energy = [&]<typename T>(auto& x) {
-    double avg = 0.0;
-    for (int i = 0; i < x_pleats_init.size(); i++) {
-      avg += Optiz::val(x(i, 2));
-    }
-    avg /= x_pleats_init.size();
-    T result = 0.0;
-#pragma omp parallel for schedule(static) reduction(+ : result)
-    for (int i = 0; i < x_pleats_init.size(); i++) {
-      result += Optiz::project_psd(sqr(x(i, 2) - avg));
-    }
-    result /= x_pleats_init.size();
-    return var_weight * result;
-  };
-
   const auto& maximize_pleat_underlay_embedding = [&]<typename T>(int i,
                                                                   auto& x) {
     int ppleat = i / x_underlay.rows();
@@ -125,21 +110,21 @@ std::vector<std::vector<double>> embed_pleats(
     return -max_embedding_weight * ((p - p2).norm());
   };
 
-  Eigen::MatrixXd result =
-      Optiz::Problem(x_pleats,
-                     Optiz::Problem::Options{.relative_change_tolerance = 1e-4})
-          // Maximize pleat-pleat distance.
-          .add_element_energy<6>(sqr(x_pleats.rows()),
-                                 maximize_pleat_pleat_embedding)
-          // Maximize pleat-underlay distance.
-          .add_element_energy<3>(x_pleats.rows() * x_underlay.rows(),
-                                 maximize_pleat_underlay_embedding)
-          // Minimize pleats 'z' variance.
-          .add_energy(min_var_energy)
-          // Equality constraints.
-          .add_element_energy(eq_constraints.size(), preserve_edge_len)
-          .optimize()
-          .x();
+  Optiz::Problem prob(
+      x_pleats, Optiz::Problem::Options{.relative_change_tolerance = 1e-4});
+
+  if (max_embedding_weight > 0) {
+    // Maximize pleat-pleat distance.
+    prob.add_element_energy<6>(sqr(x_pleats.rows()),
+                               maximize_pleat_pleat_embedding);
+    // Maximize pleat-underlay distance.
+    prob.add_element_energy<3>(x_pleats.rows() * x_underlay.rows(),
+                               maximize_pleat_underlay_embedding);
+  }
+  // Equality constraints.
+  prob.add_element_energy(eq_constraints.size(), preserve_edge_len);
+
+  Eigen::MatrixXd result = prob.optimize().x();
   return eig_to_std(result);
 }
 

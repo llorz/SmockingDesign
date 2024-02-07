@@ -23,6 +23,18 @@ We implement an interactive user interface in Blender as an add-on including the
 - ***run cloth simulator*** implemented in Blender on the fine-resolution smocking pattern
   
 ## Usage 
-1. open our [add-on script](https://github.com/llorz/SmockingDesign/blob/main/python_implementation/utils/SmockingDesignAddOn.py) in Blender's scripting workspace and run it from there
-2. compile cpp_smocking_solver.cpp (the compiled code for Mac with python 3.10 is provided)
-3. follow our [supplematory video](https://youtu.be/vjnmbmO3zcg) to see some examples of using this UI
+1. install the [add-on](https://github.com/llorz/SmockingDesign/blob/main/python_implementation/smocking_design.zip) in Blender ([reference](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html))
+2. follow our [supplematory video](https://youtu.be/vjnmbmO3zcg) to see some examples of using this UI
+
+## Compilation of the c++ code
+In case the compiled versions do not match your OS, you can compile the c++ code by:
+
+1. cd python_implementation/native
+2. mkdir build; cd build
+3. cmake -DCMAKE_BUILD_TYPE=Release ../
+4. make -j
+
+
+After a successful compilation, you'll find a file named 'cpp_smocking_solver.{some_os_dependent_suffix}' in the build/ directory.
+
+Copy the file to python_implementation/smocking_design, compress this directory to a zip file and install it in Blender.

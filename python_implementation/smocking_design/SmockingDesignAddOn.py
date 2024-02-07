@@ -1,16 +1,3 @@
-bl_info = {
-    "name": "SmockingDesign",
-    "author": "Jing Ren, Aviv Segall",
-    "version": (1, 0),
-    "blender": (2, 80, 0),
-    "location": "View3D > N",
-    "description": "Design and Simulate Smocking Arts",
-    "warning": "",
-    "doc_url": "",
-    "category": "Design",
-}
-
-
 
 from math import *
 import bpy
@@ -21,21 +8,17 @@ from bpy.types import (Panel, Operator)
 from scipy import spatial
 import sys
 import os
+import pathlib
 
-# TODO: Find a better way to load the module...
-import importlib
-FILE_PATH = os.path.dirname(bpy.context.space_data.text.filepath)
-sys.path.append(FILE_PATH)
-import cpp_smocking_solver
-import arap
-import cloth_sim
-import honeycomb
-importlib.reload(cpp_smocking_solver)
-importlib.reload(arap)
-importlib.reload(cloth_sim)
-importlib.reload(honeycomb)
+script_dir = os.path.dirname(__file__)
 
-import math
+# FILE_PATH = os.path.dirname(bpy.context.space_data.text.filepath)
+# sys.path.append(FILE_PATH)
+from smocking_design import cpp_smocking_solver
+from smocking_design import arap
+from smocking_design import cloth_sim
+from smocking_design import honeycomb
+
 from mathutils import Vector
 import numpy as np
 from scipy.spatial.distance import cdist
@@ -219,8 +202,8 @@ class SolverData():
 # ========================================================================
 
 
-class debug_clear(Operator):
-    bl_idname = "object.debug_clear"
+class smocking_debug_clear_all(Operator):
+    bl_idname = "object.smocking_debug_clear_all"
     bl_label = "clear data in scene"
     
     def execute(self, context):
@@ -1311,6 +1294,8 @@ def delete_everything():
     bpy.data.lights.remove(l)
   for o in bpy.data.objects:
     bpy.data.objects.remove(o)
+  for mat in bpy.data.materials:
+      bpy.data.materials.remove(mat)
   bpy.data.orphans_purge()
   bpy.data.orphans_purge()
   bpy.data.orphans_purge()
@@ -1875,29 +1860,6 @@ def initialize_data():
     dt.tmp_fsp2 = []
     dt.tmp_fsp = []
     dt.hex_centers = []
-
-    for mat in bpy.data.materials:
-      bpy.data.materials.remove(mat)
-      
-    with bpy.data.libraries.load(os.path.join(FILE_PATH, "fabric_material.blend")) as (data_from, data_to):
-      data_to.materials = data_from.materials
-    
-    area = next(area for area in bpy.context.screen.areas if area.type == 'VIEW_3D')
-    space = next(space for space in area.spaces if space.type == 'VIEW_3D')
-    space.shading.type = 'RENDERED'
-    if 'sun_data' in bpy.data.lights:
-      bpy.data.lights.remove(bpy.data.lights["sun_data"])
-    light_data = bpy.data.lights.new(name="sun_data", type='SUN')
-    light_data.energy = 0.8
-    if "sun" in bpy.data.objects:
-      bpy.data.objects.remove(bpy.data.objects["sun"])
-    light_object = bpy.data.objects.new(name="sun", object_data=light_data)
-    light_object.location = (-100, -100, -100)
-    light_object.rotation_euler.y = 0.2
-    light_object.rotation_euler.x = -0.2
-    bpy.context.collection.objects.link(light_object)
-    bpy.data.scenes[0].world.use_nodes = True
-    bpy.data.scenes[0].world.node_tree.nodes["Background"].inputs['Color'].default_value = (0.05, 0.05, 0.05, 1.0)
 
 
 
@@ -3078,7 +3040,6 @@ class PrepareArapOperator(Operator):
 
     obj = bpy.data.objects.new('smocked_obj', smocked_mesh)
     obj.location = (shift_x - margin_lr[0], -bbox_min[1] - margin_tb[0], 0)
-    obj.data.materials.append(bpy.data.materials['Fabric035'])
     for f in obj.data.polygons:
       f.use_smooth = True
     smocked_collection = bpy.data.collections.new('smocked_collection')
@@ -3583,7 +3544,7 @@ class FastSmock_panel(bpy.types.Panel):
         layout.use_property_decorate = False  # No animation.
 
         row = layout.row()
-        row.operator(debug_clear.bl_idname, text="clear everything", icon='GHOST_ENABLED')
+        row.operator(smocking_debug_clear_all.bl_idname, text="clear everything", icon='GHOST_ENABLED')
         layout.row()
         layout.prop(context.space_data.region_3d, "lock_rotation", text="Lock rotation")
 
@@ -3708,7 +3669,7 @@ wm.if_show_embedded_graph = bpy.props.BoolProperty(default=False, update=refresh
 _classes = [
     
 
-    debug_clear,
+    smocking_debug_clear_all,
     debug_func,
 
     # UI panels.
@@ -3806,7 +3767,7 @@ def unregister():
         bpy.utils.unregister_class(cls)
         
     del bpy.types.Scene.sl_props    
-    del bpy.tpyes.Scene.solver_data
+    del bpy.types.Scene.solver_data
     for km, kmi in addon_keymaps:
         km.keymap_items.remove(kmi)
     addon_keymaps.clear()
