@@ -1,4 +1,4 @@
-# Shamefully stolen from https://gist.github.com/jamesgregson/ba72af28c83b3da1968690cd11278829
+# from https://gist.github.com/jamesgregson/ba72af28c83b3da1968690cd11278829
 from typing import *
 import time
 import numpy as np

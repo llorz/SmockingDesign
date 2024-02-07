@@ -1,9 +1,9 @@
 #pragma once
-#include "Dual.h"
-#include "TDenseDual.h"
+#include "Var.h"
+#include "TDenseVar.h"
 #include "Utils.h"
 
-namespace SparseAD {
+namespace Optiz {
 
 template<typename T>
 inline T sqr(const T& x ) {
@@ -16,21 +16,21 @@ inline T project_psd(const T& x) {
   return x;
 }
 
-inline Dual project_psd(const Dual& x) {
-  Dual res = Dual(x).projectHessian();
+inline Var project_psd(const Var& x) {
+  Var res = Var(x).projectHessian();
   return res;
 }
-inline Dual project_psd(Dual&& x) {
+inline Var project_psd(Var&& x) {
   x.projectHessian();
   return x;
 }
 template<int k>
-inline TDenseDual<k> project_psd(const TDenseDual<k>& x) {
-  TDenseDual<k> res = TDenseDual<k>(x).projectHessian();
+inline TDenseVar<k> project_psd(const TDenseVar<k>& x) {
+  TDenseVar<k> res = TDenseVar<k>(x).projectHessian();
   return res;
 }
 template<int k>
-inline TDenseDual<k> project_psd(TDenseDual<k>&& x) {
+inline TDenseVar<k> project_psd(TDenseVar<k>&& x) {
   x.projectHessian();
   return x;
 }
@@ -41,18 +41,18 @@ inline T val(const T& x) {
   return x;
 }
 
-inline double val(const Dual& x) {
+inline double val(const Var& x) {
   return x.val();
 }
 
 template<int k>
-inline double val(const TDenseDual<k>& x) {
+inline double val(const TDenseVar<k>& x) {
   return x.val();
 }
 
 template<int k>
-LocalDualFactory<k> get_local_factory(const TGenericVariableFactory<Dual>& other) {
-  return LocalDualFactory<k>(other);
+LocalVarFactory<k> get_local_factory(const TGenericVariableFactory<Var>& other) {
+  return LocalVarFactory<k>(other);
 }
 
 template<int k>

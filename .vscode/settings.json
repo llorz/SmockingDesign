@@ -84,7 +84,8 @@
     "queue": "cpp",
     "semaphore": "cpp",
     "stop_token": "cpp",
-    "cinttypes": "cpp"
+    "cinttypes": "cpp",
+    "core": "cpp"
   },
   "cmake.sourceDirectory": "${workspaceFolder}/python_implementation/native"
 }

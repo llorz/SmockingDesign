@@ -9,12 +9,9 @@
 #include <iostream>
 #include <vector>
 
-#include "SparseAD/include/Dual.h"
-#include "SparseAD/include/Problem.h"
-#include "arap.h"
-#include "param.h"
+#include "Optiz/include/Problem.h"
 
-template<typename T>
+template <typename T>
 Eigen::MatrixX<T> std_to_eig(const std::vector<std::vector<T>>& vec) {
   if (vec.size() == 0) {
     return Eigen::MatrixX<T>();
@@ -58,10 +55,10 @@ std::vector<std::vector<double>> embed_underlay(
   };
 
   Eigen::MatrixXd output =
-      SparseAD::Problem(x_init)
-          .add_sparse_energy<4>(eq_constraints.size(), energy_func)
+      Optiz::Problem(x_init)
+          .add_element_energy<4>(eq_constraints.size(), energy_func)
           .optimize()
-          .current();
+          .x();
   return eig_to_std(output);
 }
 
@@ -90,19 +87,19 @@ std::vector<std::vector<double>> embed_pleats(
   };
 
   const auto& preserve_edge_len = [&]<typename T>(int i, auto& x) -> T {
-    return sqr(edge_len_diff.template operator()<T>(i, x));
+    return eq_weight * sqr(edge_len_diff.template operator()<T>(i, x));
   };
 
   const auto& min_var_energy = [&]<typename T>(auto& x) {
     double avg = 0.0;
     for (int i = 0; i < x_pleats_init.size(); i++) {
-      avg += SparseAD::val(x(i, 2));
+      avg += Optiz::val(x(i, 2));
     }
     avg /= x_pleats_init.size();
     T result = 0.0;
 #pragma omp parallel for schedule(static) reduction(+ : result)
     for (int i = 0; i < x_pleats_init.size(); i++) {
-      result += SparseAD::project_psd(sqr(x(i, 2) - avg));
+      result += Optiz::project_psd(sqr(x(i, 2) - avg));
     }
     result /= x_pleats_init.size();
     return var_weight * result;
@@ -114,7 +111,7 @@ std::vector<std::vector<double>> embed_pleats(
     int punderlay = i % x_underlay.rows();
     const auto& p = x.row(ppleat);
     const auto& p2 = x_underlay.row(punderlay);
-    return -((p - p2).norm());
+    return -max_embedding_weight * ((p - p2).norm());
   };
 
   const auto& maximize_pleat_pleat_embedding = [&]<typename T>(int i, auto& x) {
@@ -125,59 +122,30 @@ std::vector<std::vector<double>> embed_pleats(
     };
     const auto& p = x.row(p1ind);
     const auto& p2 = x.row(p2ind);
-    return -((p - p2).norm());
+    return -max_embedding_weight * ((p - p2).norm());
   };
 
-  auto result = 
-      SparseAD::Problem(x_pleats, SparseAD::Problem::Options {.relative_change_tolerance = 1e-4})
+  Eigen::MatrixXd result =
+      Optiz::Problem(x_pleats,
+                     Optiz::Problem::Options{.relative_change_tolerance = 1e-4})
           // Maximize pleat-pleat distance.
-          .add_sparse_energy<6>(
-              sqr(x_pleats.rows()),
-              SparseAD::Energy<decltype(maximize_pleat_pleat_embedding)>{
-                  .weight = max_embedding_weight,
-                  .provider = maximize_pleat_pleat_embedding})
+          .add_element_energy<6>(sqr(x_pleats.rows()),
+                                 maximize_pleat_pleat_embedding)
           // Maximize pleat-underlay distance.
-          .add_sparse_energy<3>(
-              x_pleats.rows() * x_underlay.rows(),
-              SparseAD::Energy<decltype(maximize_pleat_underlay_embedding)>{
-                  .weight = max_embedding_weight,
-                  .provider = maximize_pleat_underlay_embedding})
+          .add_element_energy<3>(x_pleats.rows() * x_underlay.rows(),
+                                 maximize_pleat_underlay_embedding)
           // Minimize pleats 'z' variance.
           .add_energy(min_var_energy)
           // Equality constraints.
-          .add_sparse_energy(
-              eq_constraints.size(),
-              SparseAD::Energy<decltype(preserve_edge_len)>{
-                  .weight = eq_weight, .provider = preserve_edge_len})
+          .add_element_energy(eq_constraints.size(), preserve_edge_len)
           .optimize()
-          .current();
-  std::cout << "Constraints violation" << std::endl;
-  int violating = 0.0;
-  double avg_violation = 0.0;
-  double avg_relative_violation = 0.0;
-  double total_eq_energy = 0.0;
-  for (int i =0 ; i < eq_constraints.size(); i++) {
-    auto diff = edge_len_diff.template operator()<double>(i, result);
-    int a = eq_constraints[i][0], b = eq_constraints[i][1];
-    double d = eq_constraints[i][2];
-    if (diff > 0.0) {
-      violating++;
-      avg_violation += diff;
-      avg_relative_violation += diff / d;
-    }
-    total_eq_energy += sqr(diff);
-    std::cout << "Diff: " << a << ", " << b << ": " << diff << std::endl;
-  }
-  std::cout << "Total of " << violating << " violated out of " << eq_constraints.size() << " constraints" << std::endl;
-  std::cout << "Average violation: " << avg_violation / violating << ", average relative violation: "
-  << avg_relative_violation / eq_constraints.size() * 100 << "%" << std::endl;
-  std::cout << "Total pleat eq energy: " << total_eq_energy << std::endl;
+          .x();
   return eig_to_std(result);
 }
 
 Eigen::Matrix2d get_local_frame(const Eigen::MatrixXd& verts,
-const std::vector<int>& face) {
-int v0 = face[0], v1 = face[1], v2 = face[2];
+                                const std::vector<int>& face) {
+  int v0 = face[0], v1 = face[1], v2 = face[2];
   const Eigen::Vector3d &e1 = (verts.row(v1) - verts.row(v0)),
                         e2 = verts.row(v2) - verts.row(v1);
   const Eigen::Vector3d& e1_rot = e1.cross(e2).cross(e1).normalized();
@@ -189,46 +157,42 @@ int v0 = face[0], v1 = face[1], v2 = face[2];
 }
 
 Eigen::Matrix2d get_jacobian(const Eigen::MatrixXd& verts,
-  const Eigen::MatrixXd& deform_verts,
-  const std::vector<int>& face) {
-    // Create local frame.
-    Eigen::Matrix2d local_frame = get_local_frame(verts, face);
-    Eigen::Matrix2d new_local_frame = get_local_frame(deform_verts, face);
-    return new_local_frame * local_frame.inverse();
-  }
+                             const Eigen::MatrixXd& deform_verts,
+                             const std::vector<int>& face) {
+  // Create local frame.
+  Eigen::Matrix2d local_frame = get_local_frame(verts, face);
+  Eigen::Matrix2d new_local_frame = get_local_frame(deform_verts, face);
+  return new_local_frame * local_frame.inverse();
+}
 
 std::vector<double> get_isometry_distortion(
-  const std::vector<std::vector<double>>& grid_verts_vec,
-  const std::vector<std::vector<double>>& deform_verts_vec,
-  const std::vector<std::vector<int>>& faces) {
-    Eigen::MatrixXd grid_verts = std_to_eig(grid_verts_vec);
-    Eigen::MatrixXd deform_verts = std_to_eig(deform_verts_vec);
+    const std::vector<std::vector<double>>& grid_verts_vec,
+    const std::vector<std::vector<double>>& deform_verts_vec,
+    const std::vector<std::vector<int>>& faces) {
+  Eigen::MatrixXd grid_verts = std_to_eig(grid_verts_vec);
+  Eigen::MatrixXd deform_verts = std_to_eig(deform_verts_vec);
 
-    std::vector<double> result(grid_verts_vec.size());
-    for (int i = 0 ; i < faces.size(); i++) {
-      Eigen::Matrix2d j = get_jacobian(grid_verts, deform_verts, faces[i]);
+  std::vector<double> result(grid_verts_vec.size());
+  for (int i = 0; i < faces.size(); i++) {
+    Eigen::Matrix2d j = get_jacobian(grid_verts, deform_verts, faces[i]);
 
-      // Sym dirrichlet.
-      // double distortion = (j.squaredNorm() + j.inverse().squaredNorm() - 4);
-      // Singular values should be 1.
-      Eigen::JacobiSVD<Eigen::Matrix2d> svd(j);
-      double distortion = (svd.singularValues().array() - 1).square().sum();
+    // Sym dirrichlet.
+    // double distortion = (j.squaredNorm() + j.inverse().squaredNorm() - 4);
+    // Singular values should be 1.
+    Eigen::JacobiSVD<Eigen::Matrix2d> svd(j);
+    double distortion = (svd.singularValues().array() - 1).square().sum();
 
-      // Integrate the distortion around the vertices.
-      for (int j = 0; j < 3; j++) {
-        result[faces[i][j]] += distortion / 3;
-      }
+    // Integrate the distortion around the vertices.
+    for (int j = 0; j < 3; j++) {
+      result[faces[i][j]] += distortion / 3;
     }
-
-    return result;
   }
 
+  return result;
+}
+
 PYBIND11_MODULE(cpp_smocking_solver, m) {
-  m.doc() = "Ceres solver for smocking";
+  m.doc() = "Solver for smocking";
   m.def("embed_underlay", &embed_underlay, "Embed underlay graph.");
   m.def("embed_pleats", &embed_pleats, "Embed pleats graph.");
-  m.def("bary_coords", &bary_coords, "Get isometry distortion.");
-  m.def("prepare_arap_constraints", &prepare_constraints, "Prepare the edge constraints for ARAP");
-  m.def("run_arap_step", &run_one_step, "Run one step of ARAP");
-  m.def("isometry_param", &isometry_param, "Isometry parameterization");
 }

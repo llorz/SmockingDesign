@@ -28,18 +28,12 @@ FILE_PATH = os.path.dirname(bpy.context.space_data.text.filepath)
 sys.path.append(FILE_PATH)
 import cpp_smocking_solver
 import arap
-import awrap
-import arap_stitching_lines
 import cloth_sim
 import honeycomb
-import wrapping
 importlib.reload(cpp_smocking_solver)
 importlib.reload(arap)
-importlib.reload(awrap)
-importlib.reload(arap_stitching_lines)
 importlib.reload(cloth_sim)
 importlib.reload(honeycomb)
-importlib.reload(wrapping)
 
 import math
 from mathutils import Vector
@@ -116,9 +110,7 @@ PROPS = [
     ('if_highlight_button', bpy.props.BoolProperty(name="highlight buttons", default=True)),
 
     # fast smocking
-    # TODO: Revert
-    # ('path_import', bpy.props.StringProperty(subtype='FILE_PATH', name='File')),
-    ('path_import', bpy.props.StringProperty(name='Pattern')),
+    ('path_import', bpy.props.StringProperty(subtype='FILE_PATH', name='File')),
     ('path_import_fullpattern', bpy.props.StringProperty(subtype='FILE_PATH', name='File', default='/tmp/my_pattern_name.obj')),
     ('fastsmock_select', bpy.props.EnumProperty(items= (('U', 'Unit', 'load existing unit pattern', 'EVENT_U', 0),    
                                                         ('F', 'Full', 'load existing full pattern', 'EVENT_F', 1)) ,  
@@ -149,11 +141,8 @@ PROPS = [
     ('filename_export_fullpattern', bpy.props.StringProperty(name='Name', default='my_pattern_name')),
     ('export_format', bpy.props.EnumProperty(items = [(".obj", "OBJ", ".obj"), (".off", "OFF", ".off")], name="Format", default=".obj")),
     # FSP: combine two patterns
-    # TODO: Revert
-    ('file_import_p1', bpy.props.StringProperty(name='P1 name')),
-    ('file_import_p2', bpy.props.StringProperty(name='P2 name')),
-    # ('file_import_p1', bpy.props.StringProperty(subtype='FILE_PATH', name='P1 path')),
-    # ('file_import_p2', bpy.props.StringProperty(subtype='FILE_PATH', name='P2 path')),
+    ('file_import_p1', bpy.props.StringProperty(subtype='FILE_PATH', name='P1 path')),
+    ('file_import_p2', bpy.props.StringProperty(subtype='FILE_PATH', name='P2 path')),
     ('combine_direction', bpy.props.EnumProperty(items = [("x", "x axis", "along x axis", '',0), 
                                                           ("y", "y axis", "along y axis",'',1)], 
                                                           name="Combine", default="x")),
@@ -175,10 +164,8 @@ PROPS = [
     ('arap_constraint_weight', bpy.props.FloatProperty(name='w_constraint', default=1, min=0.0)), 
     ('arap_num_iters', bpy.props.IntProperty(name='n_iter', default=100, min=0)),
     ('fine_grid_step', bpy.props.FloatProperty(name='step_size', default=0.15, min=0)),
-    ('object_to_wrap', bpy.props.StringProperty(name="Object to wrap (empty for cylinder)")),
     ('arap_underlay_weight', bpy.props.FloatProperty(name='w_underlay', default=1, min=0.0)), 
     ('arap_pleat_weight', bpy.props.FloatProperty(name='w_pleats', default=0.01, min=0.0)),
-    ('wrap_margins', bpy.props.BoolProperty(name="Wrap margins", default=True)),
     ('positive_pleats', bpy.props.BoolProperty(name="Positive pleats", default=False)),
     ('radial_gathering_radius', bpy.props.FloatProperty(name="r_gather", default=0.75, min=0.0)),
     ('arap_margin_top', bpy.props.FloatProperty(name='margin_top', default=0.5, min=0.0)),
@@ -186,7 +173,7 @@ PROPS = [
     ('arap_margin_left', bpy.props.FloatProperty(name='margin_left', default=0.5, min=0.0)),
     ('arap_margin_right', bpy.props.FloatProperty(name='margin_right', default=0.5, min=0.0)),
     ('grid_deform_func', bpy.props.StringProperty(name='f(x,y)=', default="(x, y)")),
-    ('subdivide_grid', bpy.props.IntProperty(name='Subdivide coarse', default=3)),
+    ('subdivide_grid', bpy.props.IntProperty(name='Subdivide coarse', default=4)),
     
 
 
@@ -777,25 +764,6 @@ class CreateClothSimOperator(Operator):
     cloth_sim.add_cloth_sim(obj)
     return {'FINISHED'}
 
-class DirectArapOperator(Operator):
-  bl_idname = "object.direct_arap_operator"
-  bl_label = "Creates a cloth simulator for the smocked mesh."
-  
-  def execute(self, context):
-    dt = bpy.types.Scene.solver_data
-    fsp = dt.full_smocking_pattern
-    sg = dt.smocked_graph
-
-    # global g_V, g_F, g_mesh, g_iters, g_arap, g_constraints
-    obj, V3D, g_F, g_arap = arap_stitching_lines.create_direct_arap_mesh(fsp, sg)
-    g_mesh = obj.data
-    g_V = V3D.T
-    # g_V = g_arap(None, 0, V3D)
-    g_iters = 100
-    g_constraints = None
-    dt.arap_data = [g_V, g_F, g_mesh, g_iters, g_arap, g_constraints]
-    return {'FINISHED'}
-
 class RealtimeArapOperator(bpy.types.Operator):
     """Show arap iterations"""
     bl_idname = "arap.realtime_operator"
@@ -825,7 +793,6 @@ class RealtimeArapOperator(bpy.types.Operator):
             dt.arap_data[3] = g_iters
             if (g_iters == 0):
               cur_time = time.time()
-              print("Arap took " + str(cur_time - arap_start_time) + " seconds")
               arap_start_time = None
               return {'FINISHED'}
             self._timer = wm.event_timer_add(0.01, window=context.window)
@@ -843,38 +810,6 @@ class RealtimeArapOperator(bpy.types.Operator):
     def cancel(self, context):
         wm = context.window_manager
         wm.event_timer_remove(self._timer)
-
-def prepare_cylinder_arap(V, F, pattern_arap, fsp, sg, weight = 1):
-  anchor_ids = pattern_arap.anchors
-  nl = fsp.num_stitching_lines()
-  underlay_anchors = [anchor_ids[i] for i in range(len(anchor_ids)) if sg.dict_sp2sg[i] < nl]
-  underlay_locations = V[underlay_anchors]
-  # bbox_min, bbox_max = (np.amin(underlay_locations, axis=0), np.amax(underlay_locations, axis=0))
-  # The height and circumference of the cylinder.
-  # l = bbox_max - bbox_min
-  l = [
-  np.amax(underlay_locations[:, 0]) - np.amin(underlay_locations[:, 0]),
-  np.amax(V[:, 1]) - np.amin(V[:, 1]),
-      ]
-
-  if bpy.context.scene.object_to_wrap == "":
-    uv, verts, faces = wrapping.create_cylinder(l)
-  else:
-    selected_obj = bpy.data.objects[bpy.context.scene.object_to_wrap]
-    mesh_obj = bpy.data.objects['smocked_obj']
-    bpy.context.view_layer.objects.active = selected_obj
-    bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_MASS', center='MEDIAN')
-    bpy.context.view_layer.objects.active = mesh_obj
-    bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_MASS', center='MEDIAN')
-    mesh_obj.rotation_euler = selected_obj.rotation_euler
-    mesh_obj.location = selected_obj.location
-    mesh_obj.scale = selected_obj.scale
-    uv, verts, faces = wrapping.get_object_data(selected_obj)
-  constraints, constraints_weight, delete_verts, V = wrapping.get_constraints_from_param_bary(V, 
-  anchor_ids, fsp, sg, uv, verts, faces)
-
-  cyl_arap = awrap.ARAP(V.transpose(), F, constraints_weight, constraints)
-  return cyl_arap, constraints, delete_verts, V
 
 
 def prepare_arap(x, fsp, sg, weight = 1):
@@ -2331,9 +2266,7 @@ class ImportUnitPattern(Operator):
         initialize_pattern_collection(COLL_NAME_FSP, COLL_NAME_FSP_SL)
 
         
-        # TODO: Revert
-        # file_name = bpy.path.abspath(context.scene.path_import)
-        file_name = "/Users/avivsegall/projs/SmockingDesign/unit_smocking_patterns/" + context.scene.path_import + ".usp"
+        file_name = bpy.path.abspath(context.scene.path_import)
         usp = read_usp(file_name)
         
         usp_loc, _ = update_usp_fsp_location()
@@ -2839,9 +2772,7 @@ class FSP_CombinePatterns_load_first(Operator):
         
 
         # load the exiting smocking pattern to my_coll
-        # TODO: Revert
-        # file_name = bpy.path.abspath(context.scene.file_import_p1)
-        file_name = "/Users/avivsegall/projs/SmockingDesign/full_smocking_patterns/" + context.scene.file_import_p1 + "_2.obj"
+        file_name = bpy.path.abspath(context.scene.file_import_p1)
         
         fsp = read_obj_to_fsp(file_name, MESH_NAME_P1, COLL_NAME_P1, COLL_NAME_P1_SL, "Pattern 01")
 
@@ -2874,9 +2805,7 @@ class FSP_CombinePatterns_load_second(Operator):
 
     
         # load the exiting smocking pattern to my_coll
-        # TODO: Revert 
-        # file_name = bpy.path.abspath(context.scene.file_import_p2)
-        file_name = "/Users/avivsegall/projs/SmockingDesign/full_smocking_patterns/" + context.scene.file_import_p2 + "_2.obj"
+        file_name = bpy.path.abspath(context.scene.file_import_p2)
         
         fsp = read_obj_to_fsp(file_name, MESH_NAME_P2, COLL_NAME_P2, COLL_NAME_P2_SL, "Pattern 02")
 
@@ -3101,26 +3030,6 @@ class DeleteMargins(Operator):
 
     return {'FINISHED'}
 
-class PrepareCylinderArapOperator(Operator):
-  bl_idname = "object.prepare_cylinder_arap_operator"
-  bl_label = "Prepare ARAP"
-  bl_options = {'REGISTER', 'UNDO'}
-
-  def execute(self, context):
-    dt = bpy.types.Scene.solver_data
-    g_V, g_F, g_mesh, g_iters, g_arap, g_constraints = dt.arap_data
-    fsp = dt.full_smocking_pattern
-    sg = dt.smocked_graph
-    weight = context.scene.arap_constraint_weight
-    g_arap, g_constraints, delete_verts, new_verts = prepare_cylinder_arap(g_V.T, g_F, g_arap, fsp, sg, weight)
-    g_mesh.vertices.foreach_set("co", new_verts.reshape(new_verts.size))
-    dt.arap_data[0] = None
-    dt.arap_data[4] = g_arap
-    dt.arap_data[5] = g_constraints
-    dt.delete_verts = delete_verts
-
-    return {'FINISHED'}
-
 def delete_our_simulation():
   if "Smocked" in bpy.data.meshes:
       bpy.data.meshes.remove(bpy.data.meshes["Smocked"])
@@ -3207,73 +3116,6 @@ class MagicButtonOperator(Operator):
         arap_start_time = time.time()
         bpy.ops.object.prepare_arap_operator()
         bpy.ops.arap.realtime_operator()
-
-        return {'FINISHED'}
-
-class IsometryParam(Operator):
-    bl_idname = "objects.isometry_param"
-    bl_label = "Simulate"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def execute(self, context):
-        selected_obj = bpy.data.objects[bpy.context.scene.object_to_wrap]
-        uv, verts, faces = wrapping.get_object_data(selected_obj)
-        new_uv = np.array(cpp_smocking_solver.isometry_param(verts, uv, faces))
-        bbox = np.amin(new_uv, axis=0), np.amax(new_uv, axis=0)
-        new_uv -= (bbox[0] + bbox[1])/2
-        new_uv *= 1/max(bbox[1] - bbox[0])
-        new_uv += [0.5, 0.5]
-
-        mesh = selected_obj.data
-        for l in mesh.loop_triangles:
-          for i in range(3):
-            mesh.uv_layers.active.data[l.loops[i]].uv = new_uv[l.vertices[i], :]
-        return {'FINISHED'}
-
-class MagicWrappingOperator(Operator):
-    bl_idname = "objects.magic_wrapping_operator"
-    bl_label = "Simulate"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def execute(self, context):
-        bpy.ops.object.prepare_cylinder_arap_operator()
-        bpy.ops.arap.realtime_operator()
-
-        return {'FINISHED'}
-
-class PrepareGravityArap(Operator):
-    bl_idname = "objects.prepare_gravity_arap"
-    bl_label = "Simulate"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def execute(self, context):
-
-        dt = bpy.types.Scene.solver_data
-        g_V, g_F, g_mesh, g_iters, g_arap, g_constraints = dt.arap_data
-        bpy.ops.object.prepare_cylinder_arap_operator()
-        dt.arap_data[0] = g_V
-                
-        dt.gravity_arap_constraints = cpp_smocking_solver.prepare_arap_constraints(g_V.T, g_F)
-
-        return {'FINISHED'}
-
-class RunGravityArapIteration(Operator):
-    bl_idname = "objects.run_gravity_arap_iteration"
-    bl_label = "Simulate"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def execute(self, context):
-
-        dt = bpy.types.Scene.solver_data
-        edge_constraints = dt.gravity_arap_constraints
-        g_V, g_F, g_mesh, g_iters, g_arap, g_constraints = dt.arap_data
-        constraints = [[k, v[0], v[1], v[2]] for k,v in g_constraints.items()]
-        g_V = cpp_smocking_solver.run_arap_step(g_V.T, g_F,
-        edge_constraints, constraints, 1, 1, -0.01)
-        g_V = np.array(g_V)
-        g_mesh.vertices.foreach_set("co", g_V.reshape(g_V.size))
-        g_mesh.update()
-        dt.arap_data[0] = g_V.T
 
         return {'FINISHED'}
 
@@ -3472,43 +3314,6 @@ class CreateHextGridPanel(FullGrid_panel, bpy.types.Panel):
         row.alert=context.scene.if_highlight_button
         row.operator(HoneycombGrid.bl_idname, text="Generate", icon='FILE_VOLUME')
 
-class ApplicationsPanel(bpy.types.Panel):
-    bl_label = "Applications"
-    bl_idname = "SD_PT_applications_panel"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "SmockingDesign"
-    bl_options ={"DEFAULT_CLOSED"}
-
-    def draw(self, context):
-        props = context.scene.sl_props
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False  # No animation.
-
-        
-        layout.label(text= "Wrap to object")
-        box = layout.box()
-        row = box.row()
-        box.row().prop_search(context.scene, "object_to_wrap", bpy.data, "objects", text="")
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(IsometryParam.bl_idname, text="Isometry param", icon='MOD_SHRINKWRAP')
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(MagicWrappingOperator.bl_idname, text="Wrap object", icon='MOD_SHRINKWRAP')
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(DeleteMargins.bl_idname, text="Delete margins", icon='BRUSH_CURVES_CUT')
-        box.row()
-
-        layout.label(text= "Wrap to object")
-        box = layout.box()
-        row = box.row()
-        row.alert=context.scene.if_highlight_button
-        row.operator(PrepareGravityArap.bl_idname, text="Prepare gravity arap", icon='MOD_SHRINKWRAP')
-        row.operator(RunGravityArapIteration.bl_idname, text="Run one step", icon='MOD_SHRINKWRAP')
-
 class embedding_panel(bpy.types.Panel):
   bl_label = "Emedding"
   bl_idname = "embedding_panel"
@@ -3560,30 +3365,6 @@ class ArapGridPanel(bpy.types.Panel):
 
     layout.row().operator(PrepareArapOperator.bl_idname, text="Prepare", icon='IMPORT')
     layout.row().operator(RealtimeArapOperator.bl_idname, text="Run (esc to stop)", icon='IMPORT')
-
-class CylinderArap(bpy.types.Panel):
-  bl_label = "Parameterization ARAP"
-  bl_parent_id = 'arap_panel'
-  bl_space_type = "VIEW_3D"
-  bl_region_type = "UI"
-  bl_category = "SmockingDesign"
-  bl_options = {"DEFAULT_CLOSED"}
-  
-  def draw(self, context):
-    layout = self.layout
-    layout.use_property_split = True
-
-    layout.label(text="Arap parameters")
-    box = layout.box()
-    box.row().prop(context.scene, 'arap_constraint_weight')
-    box.row().prop(context.scene, 'arap_num_iters')
-
-    layout.row().prop_search(context.scene, "object_to_wrap", bpy.data, "objects")
-    layout.row().operator(PrepareCylinderArapOperator.bl_idname, text="Prepare", icon='IMPORT')
-    layout.row().operator(RealtimeArapOperator.bl_idname, text="Run (esc to stop)", icon='IMPORT')
-    layout.row().operator(DeleteMargins.bl_idname, text="DeleteMargins", icon='IMPORT')
-      
-
 
 class FULLGRID_PT_combine_patterns(FullGrid_panel, bpy.types.Panel):
     bl_label = "Combine two patterns"
@@ -3896,12 +3677,6 @@ class Parameter_panel(bpy.types.Panel):
         box.row().prop(context.scene, 'arap_margin_left', text="left")
         box.row().prop(context.scene, 'arap_margin_right', text="right")
 
-        layout.label(text="Wrapping")
-        box = layout.box()
-        box.row().prop(context.scene, 'arap_underlay_weight')
-        box.row().prop(context.scene, 'arap_pleat_weight')
-        box.row().prop(context.scene, 'wrap_margins')
-
 
         layout.label(text="Visualize smocked graph")
         box = layout.box()
@@ -3954,7 +3729,6 @@ _classes = [
     FULLGRID_PT_combine_patterns,
     FULLGRID_PT_export_mesh,
 
-    ApplicationsPanel,
     
     USP_CreateGrid,
     USP_SaveCurrentStitchingLine,
@@ -3992,18 +3766,12 @@ _classes = [
     SG_embed_graph,
     
     MagicButtonOperator,
-    MagicWrappingOperator,
-    IsometryParam,
     
 
     PrepareArapOperator,
-    PrepareCylinderArapOperator,
     DeleteMargins,
     RealtimeArapOperator,
     CreateClothSimOperator,
-    DirectArapOperator,
-    PrepareGravityArap,
-    RunGravityArapIteration,
  ]
 
 addon_keymaps = []
