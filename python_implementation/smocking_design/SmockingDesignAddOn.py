@@ -141,7 +141,7 @@ PROPS = [
     ('radial_grid_ratio', bpy.props.FloatProperty(name='ratio', default=0.9, min=0.1, max=1)), 
     # Embedding
     ('pleat_eq', bpy.props.FloatProperty(name='w_eq', default=1e3, min=0.0)), 
-    ('pleat_max_embed', bpy.props.FloatProperty(name='w_embed', default=1, min=0.0)), 
+    ('pleat_max_embed', bpy.props.FloatProperty(name='w_embed', default=0, min=0.0)), 
     ('pleat_embed_fancy_init', bpy.props.BoolProperty(name='fancy_pleat_init', default=True)), 
     ('pleat_variance', bpy.props.FloatProperty(name='w_height', default=1, min=0.0)), 
     ('arap_constraint_weight', bpy.props.FloatProperty(name='w_constraint', default=1, min=0.0)), 
