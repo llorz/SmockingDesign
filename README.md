@@ -45,6 +45,7 @@ If you are interested, you might find the following **references** helpful:
 ### Implementation
 - [Blender Add-on](https://github.com/llorz/SmockingDesign/blob/main/python_implementation/utils/SmockingDesignAddOn.py): we provide a blender add-on, which can be used for designing/modifying smocking patterns and previewing the corresponding smocked design
 - [Matlab prototype](https://github.com/llorz/SmockingDesign/tree/main/matlab_implementation): we also provide a matlab implementation for smocking design preview.
+- [Web implementation](https://segaviv.github.io/smock_web/) 🎉: please try our web version which includes the basic functionality for smocking design (especially if you encounter any trouble when installing the Blender Add-on). You can find instructions on how to use it by clicking the [?] next to the title.
 
 ### Baseline methods
 1. **C-IPC: Codimensional Incremental Potential Contact**, Minchen Li, Danny M. Kaufman, Chenfanfu Jiang, *ACM Transactions on Graphics (SIGGRAPH 2021)* [ [code] ](https://github.com/ipc-sim/Codim-IPC)
