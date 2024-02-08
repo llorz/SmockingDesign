@@ -80,7 +80,6 @@ def create_cloth_mesh(fsp, add_text_to_scene):
   # Create object and collection
   obj = bpy.data.objects.new('cloth_sim_obj', mesh)
   obj.location = (np.max(fsp.V[:, 0]), np.max(fsp.V[:, 1]) + 4, 0)
-  obj.data.materials.append(bpy.data.materials['Fabric035'])
   for f in obj.data.polygons:
     f.use_smooth = True
   smocked_collection = bpy.data.collections.new('cloth_sim_collection')
