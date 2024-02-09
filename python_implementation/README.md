@@ -43,6 +43,4 @@ Copy the file to python_implementation/smocking_design, compress this directory 
 
 ## Usage
 ### Loading and previewing a unit pattern smocked result
-<video controls>
-  <source src="basic_usage.mp4" type="video/mp4">
-</video>
+[![Load unit pattern](https://img.youtube.com/vi/_pqsUaJWS8I/maxresdefault.jpg)](https://youtu.be/_pqsUaJWS8I)
