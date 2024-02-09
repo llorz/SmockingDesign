@@ -22,7 +22,7 @@ We implement an interactive user interface in Blender as an add-on including the
 - ***render the smocking design***
 - ***run cloth simulator*** implemented in Blender on the fine-resolution smocking pattern
   
-## Usage 
+## Installation 
 0. install scipy in Blender's python:
  /path/to/blender/4.0/python/bin/python3.10 -m pip install scipy
 1. install the [add-on](https://github.com/llorz/SmockingDesign/blob/main/python_implementation/smocking_design.zip) in Blender ([reference](https://docs.blender.org/manual/en/latest/editors/preferences/addons.html))
@@ -40,3 +40,9 @@ In case the compiled versions do not match your OS, you can compile the c++ code
 After a successful compilation, you'll find a file named 'cpp_smocking_solver.{some_os_dependent_suffix}' in the build/ directory.
 
 Copy the file to python_implementation/smocking_design, compress this directory to a zip file and install it in Blender.
+
+## Usage
+### Loading and previewing a unit pattern smocked result
+<video controls>
+  <source src="basic_usage.mp4" type="video/mp4">
+</video>
