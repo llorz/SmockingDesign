@@ -44,3 +44,6 @@ Copy the file to python_implementation/smocking_design, compress this directory 
 ## Usage
 ### Loading and previewing a unit pattern smocked result
 [![Load unit pattern](https://img.youtube.com/vi/_pqsUaJWS8I/maxresdefault.jpg)](https://youtu.be/7Q6LuVhh3Zc)
+
+## Creating a new unit pattern
+[![Create unit pattern](https://img.youtube.com/vi/GbdLrR85X-U/maxresdefault.jpg)](https://youtu.be/GbdLrR85X-U)
