@@ -1,5 +1,5 @@
 # Digital 3D Smocking Design
-This is an example code for our paper "Digital 3D Smocking Design", by [Jing Ren](https://ren-jing.com/), [Aviv Segall](https://igl.ethz.ch/people/), and [Olga Sorkine-Hornung](https://igl.ethz.ch/people/sorkine).
+This is an example code for our paper "Digital 3D Smocking Design", by [Jing Ren](https://ren-jing.com/), [Aviv Segall](https://segaviv.github.io/), and [Olga Sorkine-Hornung](https://igl.ethz.ch/people/sorkine).
 
 In this project, we develop an optimization-based method to model smocking, a surface embroidery technique that provides decorative geometric texturing while maintaining stretch properties of the fabric. We formulate smocking as a **graph embedding** and **shape deformation** problem. We extract a coarse graph representing the fabric and the stitching constraints, and then derive the graph structure of the smocked result. We solve for the 3D embedding of this graph, which in turn reliably guides the deformation of the high-resolution fabric mesh.
 
